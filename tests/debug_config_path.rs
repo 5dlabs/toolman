@@ -27,8 +27,14 @@ fn debug_config_path_production_scenario() {
     println!("=== UNIT TEST SCENARIO ===");
     let mut config_manager = ConfigManager::new(Some(temp_dir.path().to_path_buf())).unwrap();
     println!("Config path: {:?}", config_manager.get_config_path());
-    println!("Config path exists: {}", config_manager.get_config_path().exists());
-    println!("Config path is absolute: {}", config_manager.get_config_path().is_absolute());
+    println!(
+        "Config path exists: {}",
+        config_manager.get_config_path().exists()
+    );
+    println!(
+        "Config path is absolute: {}",
+        config_manager.get_config_path().is_absolute()
+    );
 
     // Test save in unit test scenario
     config_manager.update_tool_enabled("memory", "delete_entities", true);
@@ -43,11 +49,20 @@ fn debug_config_path_production_scenario() {
     let production_config_path = project_dir.join("servers-config.json");
 
     println!("Production config path: {:?}", production_config_path);
-    println!("Production config exists: {}", production_config_path.exists());
-    println!("Production config is readable: {}", production_config_path.metadata().is_ok());
+    println!(
+        "Production config exists: {}",
+        production_config_path.exists()
+    );
+    println!(
+        "Production config is readable: {}",
+        production_config_path.metadata().is_ok()
+    );
 
     if let Ok(metadata) = production_config_path.metadata() {
-        println!("Production config permissions: {:?}", metadata.permissions());
+        println!(
+            "Production config permissions: {:?}",
+            metadata.permissions()
+        );
         println!("Production config file size: {}", metadata.len());
     }
 
@@ -55,9 +70,18 @@ fn debug_config_path_production_scenario() {
     match ConfigManager::new(Some(project_dir.clone())) {
         Ok(mut prod_config_manager) => {
             println!("✅ Production ConfigManager created successfully");
-            println!("Production config path: {:?}", prod_config_manager.get_config_path());
-            println!("Production config path exists: {}", prod_config_manager.get_config_path().exists());
-            println!("Production config path is absolute: {}", prod_config_manager.get_config_path().is_absolute());
+            println!(
+                "Production config path: {:?}",
+                prod_config_manager.get_config_path()
+            );
+            println!(
+                "Production config path exists: {}",
+                prod_config_manager.get_config_path().exists()
+            );
+            println!(
+                "Production config path is absolute: {}",
+                prod_config_manager.get_config_path().is_absolute()
+            );
 
             // Test save in production scenario
             prod_config_manager.update_tool_enabled("memory", "delete_entities", true);

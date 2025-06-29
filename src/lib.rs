@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
@@ -22,8 +22,8 @@ pub mod recovery;
 pub mod context;
 
 // Re-export key types from stdio_wrapper for convenience
+pub use context::{ContextConfig, ContextManager};
 pub use stdio_wrapper::StdioWrapper;
-pub use context::{ContextManager, ContextConfig};
 
 // Tool suggester module
 pub mod tool_suggester;
@@ -88,7 +88,10 @@ impl ConfigManager {
             }
         };
 
-        Ok(Self { config_path, config })
+        Ok(Self {
+            config_path,
+            config,
+        })
     }
 
     pub fn get_servers(&self) -> &HashMap<String, ServerConfig> {
@@ -109,7 +112,9 @@ impl ConfigManager {
     /// Update tool enabled status
     pub fn update_tool_enabled(&mut self, server_name: &str, tool_name: &str, enabled: bool) {
         if let Some(server) = self.config.servers.get_mut(server_name) {
-            server.tools.insert(tool_name.to_string(), ToolConfig { enabled });
+            server
+                .tools
+                .insert(tool_name.to_string(), ToolConfig { enabled });
         }
     }
 
@@ -144,7 +149,10 @@ impl ConfigManager {
             Err(e) => {
                 // Attempt to restore from backup on failure
                 if let Err(restore_err) = self.restore_from_backup(&backup_path) {
-                    eprintln!("Failed to restore from backup after save failure: {}", restore_err);
+                    eprintln!(
+                        "Failed to restore from backup after save failure: {}",
+                        restore_err
+                    );
                 }
                 Err(e)
             }
@@ -158,7 +166,8 @@ impl ConfigManager {
         // 1. Generate unique temporary filename
         let timestamp = chrono::Utc::now().timestamp();
         let pid = process::id();
-        let temp_filename = format!("{}.tmp.{}.{}",
+        let temp_filename = format!(
+            "{}.tmp.{}.{}",
             self.config_path.file_name().unwrap().to_string_lossy(),
             pid,
             timestamp
@@ -189,7 +198,8 @@ impl ConfigManager {
         }
 
         let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-        let backup_filename = format!("{}.backup.{}",
+        let backup_filename = format!(
+            "{}.backup.{}",
             self.config_path.file_name().unwrap().to_string_lossy(),
             timestamp
         );
@@ -216,13 +226,18 @@ impl ConfigManager {
 
         // Basic structure validation
         if parsed_config.servers.is_empty() {
-            return Err(anyhow::anyhow!("Configuration validation failed: no servers defined"));
+            return Err(anyhow::anyhow!(
+                "Configuration validation failed: no servers defined"
+            ));
         }
 
         // Validate each server configuration
         for (server_name, server_config) in &parsed_config.servers {
             if server_config.command.is_empty() {
-                return Err(anyhow::anyhow!("Configuration validation failed: server '{}' has empty command", server_name));
+                return Err(anyhow::anyhow!(
+                    "Configuration validation failed: server '{}' has empty command",
+                    server_name
+                ));
             }
         }
 
@@ -272,7 +287,12 @@ impl ConfigManager {
 
             if filename.starts_with(&backup_pattern) {
                 if let Ok(metadata) = entry.metadata() {
-                    backup_files.push((entry.path(), metadata.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH)));
+                    backup_files.push((
+                        entry.path(),
+                        metadata
+                            .modified()
+                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                    ));
                 }
             }
         }
@@ -283,7 +303,10 @@ impl ConfigManager {
         // Remove files beyond the 5 most recent
         for (path, _) in backup_files.iter().skip(5) {
             if let Err(e) = std::fs::remove_file(path) {
-                eprintln!("Warning: Failed to remove old backup file {:?}: {}", path, e);
+                eprintln!(
+                    "Warning: Failed to remove old backup file {:?}: {}",
+                    path, e
+                );
             }
         }
 
@@ -308,10 +331,17 @@ impl ConfigManager {
                 // Remove temp files older than 1 hour
                 if let Ok(metadata) = entry.metadata() {
                     if let Ok(modified) = metadata.modified() {
-                        let age = std::time::SystemTime::now().duration_since(modified).unwrap_or_default();
-                        if age > std::time::Duration::from_secs(3600) { // 1 hour
+                        let age = std::time::SystemTime::now()
+                            .duration_since(modified)
+                            .unwrap_or_default();
+                        if age > std::time::Duration::from_secs(3600) {
+                            // 1 hour
                             if let Err(e) = std::fs::remove_file(entry.path()) {
-                                eprintln!("Warning: Failed to remove temp file {:?}: {}", entry.path(), e);
+                                eprintln!(
+                                    "Warning: Failed to remove temp file {:?}: {}",
+                                    entry.path(),
+                                    e
+                                );
                             }
                         }
                     }
@@ -324,13 +354,10 @@ impl ConfigManager {
 }
 
 /// Helper function to resolve working directory patterns
-pub fn resolve_working_directory(
-    working_dir: &str,
-    project_dir: &std::path::Path
-) -> PathBuf {
+pub fn resolve_working_directory(working_dir: &str, project_dir: &std::path::Path) -> PathBuf {
     match working_dir {
         "project_root" | "project" => project_dir.to_path_buf(),
-        path if path.starts_with('/') => PathBuf::from(path),  // Absolute path
-        path => project_dir.join(path),  // Relative to project directory
+        path if path.starts_with('/') => PathBuf::from(path), // Absolute path
+        path => project_dir.join(path),                       // Relative to project directory
     }
 }

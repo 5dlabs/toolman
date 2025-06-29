@@ -1,6 +1,6 @@
-use std::io::{self, BufRead, Write};
-use serde_json::{json, Value};
 use anyhow::Result;
+use serde_json::{json, Value};
+use std::io::{self, BufRead, Write};
 use tokio::runtime::Runtime;
 
 pub struct StdioWrapper {
@@ -44,7 +44,7 @@ impl StdioWrapper {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to parse JSON: {}", e);
+                    eprintln!("Failed to parse JSON: {e}");
                     let error_response = json!({
                         "jsonrpc": "2.0",
                         "id": null,
@@ -64,9 +64,9 @@ impl StdioWrapper {
 
     fn send_capabilities(&self, stdout: &mut io::Stdout) -> Result<()> {
         // Get current tools from HTTP server
-        let tools = self.rt.block_on(async {
-            self.get_tools_from_http().await
-        })?;
+        let tools = self
+            .rt
+            .block_on(async { self.get_tools_from_http().await })?;
 
         eprintln!("[Bridge] Notifying clients about initial tools...");
         eprintln!("[Bridge] Initial tool count: {}", tools.len());
@@ -84,9 +84,9 @@ impl StdioWrapper {
         Ok(())
     }
 
-        async fn get_tools_from_http(&self) -> Result<Vec<Value>> {
+    async fn get_tools_from_http(&self) -> Result<Vec<Value>> {
         // Check if HTTP server is running and get tools
-                eprintln!("[Bridge] Making HTTP request to: {}", self.http_base_url);
+        eprintln!("[Bridge] Making HTTP request to: {}", self.http_base_url);
 
         // Get working directory to pass as context (canonicalized for consistency)
         let current_dir = if let Some(ref dir) = self.working_dir {
@@ -98,13 +98,14 @@ impl StdioWrapper {
         } else {
             // Fall back to current working directory
             std::env::current_dir()
-            .map(|d| d.canonicalize().unwrap_or(d).to_string_lossy().to_string())
+                .map(|d| d.canonicalize().unwrap_or(d).to_string_lossy().to_string())
                 .unwrap_or_else(|_| "unknown".to_string())
         };
 
-        eprintln!("[Bridge] Sending working directory: {}", current_dir);
+        eprintln!("[Bridge] Sending working directory: {current_dir}");
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.http_base_url)
             .header("X-Working-Directory", &current_dir)
             .json(&json!({
@@ -120,8 +121,14 @@ impl StdioWrapper {
 
         let response_text = response.text().await?;
         eprintln!("[Bridge] Raw response body length: {}", response_text.len());
-        eprintln!("[Bridge] Raw response body (first 200 chars): {}",
-                 if response_text.len() > 200 { &response_text[..200] } else { &response_text });
+        eprintln!(
+            "[Bridge] Raw response body (first 200 chars): {}",
+            if response_text.len() > 200 {
+                &response_text[..200]
+            } else {
+                &response_text
+            }
+        );
 
         let json_response: Value = serde_json::from_str(&response_text)?;
 
@@ -139,69 +146,73 @@ impl StdioWrapper {
     }
 
     fn apply_cursor_compatibility(&self, tools: Vec<Value>) -> Vec<Value> {
-        tools.into_iter().map(|mut tool| {
-            // Fix 1: Sanitize tool names (replace dashes with underscores)
-            let original_name = tool.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
-            if let Some(name) = &original_name {
-                if name.contains('-') {
-                    let sanitized_name = name.replace('-', "_");
-                    tool["name"] = json!(sanitized_name);
-                    eprintln!("[Bridge] Cursor compatibility: Sanitized tool name {} -> {}", name, sanitized_name);
+        tools
+            .into_iter()
+            .map(|mut tool| {
+                // Fix 1: Sanitize tool names (replace dashes with underscores)
+                let original_name = tool
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string());
+                if let Some(name) = &original_name {
+                    if name.contains('-') {
+                        let sanitized_name = name.replace('-', "_");
+                        tool["name"] = json!(sanitized_name);
+                        eprintln!(
+                            "[Bridge] Cursor compatibility: Sanitized tool name {name} -> {sanitized_name}"
+                        );
+                    }
                 }
-            }
 
-            // Fix 2: Ensure description is always a string (Cursor requirement)
-            if tool.get("description").is_none() {
-                tool["description"] = json!("Tool description");
-            }
+                // Fix 2: Ensure description is always a string (Cursor requirement)
+                if tool.get("description").is_none() {
+                    tool["description"] = json!("Tool description");
+                }
 
-            // Fix 3: Ensure inputSchema is always present (Cursor requirement)
-            if tool.get("inputSchema").is_none() {
-                tool["inputSchema"] = json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                });
-            }
+                // Fix 3: Ensure inputSchema is always present (Cursor requirement)
+                if tool.get("inputSchema").is_none() {
+                    tool["inputSchema"] = json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    });
+                }
 
-            tool
-        }).collect()
+                tool
+            })
+            .collect()
     }
 
     fn handle_request(&self, request: &Value) -> Result<Option<Value>> {
-        let method = request.get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
+        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
         let id = request.get("id").cloned();
 
         match method {
-            "initialize" => {
-                Ok(Some(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": {
-                                "listChanged": true
-                            }
-                        },
-                        "serverInfo": {
-                            "name": "mcp-bridge-stdio-wrapper",
-                            "version": "1.0.0"
+            "initialize" => Ok(Some(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {
+                            "listChanged": true
                         }
+                    },
+                    "serverInfo": {
+                        "name": "mcp-bridge-stdio-wrapper",
+                        "version": "1.0.0"
                     }
-                })))
-            }
+                }
+            }))),
             "notifications/initialized" => {
                 // This is a notification, no response needed
                 Ok(None)
             }
             "tools/list" => {
-                let tools = self.rt.block_on(async {
-                    self.get_tools_from_http().await.unwrap_or_default()
-                });
+                let tools = self
+                    .rt
+                    .block_on(async { self.get_tools_from_http().await.unwrap_or_default() });
 
                 Ok(Some(json!({
                     "jsonrpc": "2.0",
@@ -213,15 +224,17 @@ impl StdioWrapper {
             }
             "tools/call" => {
                 // Check if this is an enable_server, add_tool, or remove_tool call for special handling
-                let tool_name = request.get("params")
+                let tool_name = request
+                    .get("params")
                     .and_then(|p| p.get("name"))
                     .and_then(|n| n.as_str());
 
                 let result = self.rt.block_on(async {
                     match tool_name {
                         Some("enable_server") => self.handle_enable_server(request).await,
-                        Some("add_tool") | Some("remove_tool") | Some("enable_tool") | Some("disable_tool") => self.handle_tool_change(request).await,
-                        _ => self.forward_tool_call(request).await
+                        Some("add_tool") | Some("remove_tool") | Some("enable_tool")
+                        | Some("disable_tool") => self.handle_tool_change(request).await,
+                        _ => self.forward_tool_call(request).await,
                     }
                 });
 
@@ -234,19 +247,17 @@ impl StdioWrapper {
                             "code": -32603,
                             "message": format!("Internal error: {}", e)
                         }
-                    })))
+                    }))),
                 }
             }
-            _ => {
-                Ok(Some(json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32601,
-                        "message": "Method not found"
-                    }
-                })))
-            }
+            _ => Ok(Some(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32601,
+                    "message": "Method not found"
+                }
+            }))),
         }
     }
 
@@ -261,11 +272,12 @@ impl StdioWrapper {
         } else {
             // Fall back to current working directory
             std::env::current_dir()
-            .map(|d| d.canonicalize().unwrap_or(d).to_string_lossy().to_string())
+                .map(|d| d.canonicalize().unwrap_or(d).to_string_lossy().to_string())
                 .unwrap_or_else(|_| "unknown".to_string())
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.http_base_url)
             .header("X-Working-Directory", &current_dir)
             .json(request)
@@ -290,7 +302,10 @@ impl StdioWrapper {
 
             // Get current tool count for logging
             let tools = self.get_tools_from_http().await?;
-            eprintln!("[Bridge] Current tool count after add/remove: {}", tools.len());
+            eprintln!(
+                "[Bridge] Current tool count after add/remove: {}",
+                tools.len()
+            );
 
             // Send notification burst to trigger refresh
             self.send_notification_burst("ToolChange", 0).await?;
@@ -353,7 +368,8 @@ impl StdioWrapper {
             // APPROACH 3: Connection Cycling - Force stdio reconnection
             // Check if we should force a connection cycle
             let should_force_disconnect = std::env::var("MCP_FORCE_DISCONNECT_ON_SWITCH")
-                .unwrap_or_else(|_| "false".to_string()) == "true";
+                .unwrap_or_else(|_| "false".to_string())
+                == "true";
 
             if should_force_disconnect {
                 eprintln!("[Bridge] FORCE DISCONNECT: Terminating stdio connection to trigger reconnection");
@@ -411,7 +427,9 @@ impl StdioWrapper {
 
     // AGGRESSIVE notification methods for maximum Cursor compatibility
     async fn send_notification_burst(&self, phase: &str, delay_ms: u64) -> Result<()> {
-        eprintln!("[Bridge] Starting CURSOR-COMPATIBLE {} notification burst (delay: {}ms)", phase, delay_ms);
+        eprintln!(
+            "[Bridge] Starting CURSOR-COMPATIBLE {phase} notification burst (delay: {delay_ms}ms)"
+        );
 
         // CURSOR-SPECIFIC: Send simplified notification pattern first
         let cursor_notification = json!({
@@ -423,7 +441,9 @@ impl StdioWrapper {
             }
         });
         println!("{}", serde_json::to_string(&cursor_notification)?);
-        eprintln!("[Bridge] {} phase: Sent Cursor-specific notification", phase);
+        eprintln!(
+            "[Bridge] {phase} phase: Sent Cursor-specific notification"
+        );
 
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -433,7 +453,7 @@ impl StdioWrapper {
             "notifications/resources/list_changed",
             "notifications/prompts/list_changed",
             "notifications/capabilities/changed",
-            "notifications/server/changed"
+            "notifications/server/changed",
         ];
 
         for (i, notification_type) in notification_types.iter().enumerate() {
@@ -446,7 +466,7 @@ impl StdioWrapper {
             });
 
             println!("{}", serde_json::to_string(&notification)?);
-            eprintln!("[Bridge] {} phase: Sent {}", phase, notification_type);
+            eprintln!("[Bridge] {phase} phase: Sent {notification_type}");
 
             if i < notification_types.len() - 1 {
                 tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -465,7 +485,11 @@ impl StdioWrapper {
             });
 
             println!("{}", serde_json::to_string(&tools_notification)?);
-            eprintln!("[Bridge] {} phase: Cursor rapid tools notification #{}", phase, i + 1);
+            eprintln!(
+                "[Bridge] {} phase: Cursor rapid tools notification #{}",
+                phase,
+                i + 1
+            );
 
             if i < 3 {
                 tokio::time::sleep(tokio::time::Duration::from_millis(25)).await;
@@ -476,7 +500,10 @@ impl StdioWrapper {
     }
 
     async fn send_tools_detailed_notification(&self, tools: &[Value]) -> Result<()> {
-        eprintln!("[Bridge] Sending detailed tools notification with {} tools", tools.len());
+        eprintln!(
+            "[Bridge] Sending detailed tools notification with {} tools",
+            tools.len()
+        );
 
         // Send notification with actual tool list (some clients might need this)
         let detailed_notification = json!({
@@ -542,7 +569,7 @@ impl StdioWrapper {
         Ok(())
     }
 
-        async fn send_connection_reset_sequence(&self, tools: &[Value]) -> Result<()> {
+    async fn send_connection_reset_sequence(&self, tools: &[Value]) -> Result<()> {
         eprintln!("[Bridge] ENHANCED NUCLEAR OPTION: Sending aggressive connection reset sequence");
 
         // STRATEGY 1: Multiple connection termination signals
@@ -598,7 +625,7 @@ impl StdioWrapper {
             "notifications/tools/cache_invalidated",
             "notifications/capabilities/reset",
             "notifications/client/refresh_required",
-            "notifications/tools/force_reload"
+            "notifications/tools/force_reload",
         ];
 
         for signal in cache_invalidation_signals.iter() {

@@ -1,7 +1,7 @@
+use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
 
 // Helper function to create a minimal test configuration
@@ -41,7 +41,10 @@ fn create_test_config() -> Value {
 }
 
 // Helper function to start the HTTP server for testing
-async fn start_test_server(config_dir: &PathBuf, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+async fn start_test_server(
+    config_dir: &PathBuf,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
 
     // Build the server if needed
@@ -50,12 +53,21 @@ async fn start_test_server(config_dir: &PathBuf, port: u16) -> Result<(), Box<dy
         .output()?;
 
     if !output.status.success() {
-        return Err(format!("Failed to build server: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "Failed to build server: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
 
     // Start server in background
     let _child = Command::new("./target/release/toolman-http")
-        .args(&["--project-dir", &config_dir.to_string_lossy(), "--port", &port.to_string()])
+        .args(&[
+            "--project-dir",
+            &config_dir.to_string_lossy(),
+            "--port",
+            &port.to_string(),
+        ])
         .spawn()?;
 
     // Wait for server to be ready by polling the endpoint
@@ -63,7 +75,10 @@ async fn start_test_server(config_dir: &PathBuf, port: u16) -> Result<(), Box<dy
     let client = reqwest::Client::new();
 
     for attempt in 1..=max_attempts {
-        println!("🔍 Checking server readiness, attempt {}/{}", attempt, max_attempts);
+        println!(
+            "🔍 Checking server readiness, attempt {}/{}",
+            attempt, max_attempts
+        );
 
         match client
             .post(&format!("http://127.0.0.1:{}/mcp", port))
@@ -94,7 +109,11 @@ async fn start_test_server(config_dir: &PathBuf, port: u16) -> Result<(), Box<dy
 }
 
 // Helper function to make HTTP requests to the test server
-async fn call_mcp_endpoint(port: u16, method: &str, params: Value) -> Result<Value, Box<dyn std::error::Error>> {
+async fn call_mcp_endpoint(
+    port: u16,
+    method: &str,
+    params: Value,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
 
     let request_body = json!({
@@ -133,7 +152,10 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
     // Verify config file exists and is readable
     assert!(config_path.exists(), "Config file should exist");
     let config_content = fs::read_to_string(&config_path)?;
-    println!("📋 Config file content length: {} bytes", config_content.len());
+    println!(
+        "📋 Config file content length: {} bytes",
+        config_content.len()
+    );
 
     // Start test server with temporary config
     start_test_server(&temp_dir.path().to_path_buf(), 3003).await?;
@@ -142,7 +164,10 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
 
     // Step 1: Verify initial state
     let tools_response = call_mcp_endpoint(3003, "tools/list", json!({})).await?;
-    println!("🔍 Initial tools response: {}", serde_json::to_string_pretty(&tools_response)?);
+    println!(
+        "🔍 Initial tools response: {}",
+        serde_json::to_string_pretty(&tools_response)?
+    );
 
     // Count initial tools
     let initial_tools_count = tools_response
@@ -155,21 +180,29 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
     println!("📊 Initial tools count: {}", initial_tools_count);
 
     // Step 2: Enable a tool (ephemeral change)
-    let enable_response = call_mcp_endpoint(3003, "tools/call", json!({
-        "name": "enable_tool",
-        "arguments": {
-            "server_name": "memory",
-            "tool_name": "read_graph"
-        }
-    })).await?;
+    let enable_response = call_mcp_endpoint(
+        3003,
+        "tools/call",
+        json!({
+            "name": "enable_tool",
+            "arguments": {
+                "server_name": "memory",
+                "tool_name": "read_graph"
+            }
+        }),
+    )
+    .await?;
 
-    println!("✅ Enable tool response: {}",
-             enable_response.get("result")
-                 .and_then(|r| r.get("content"))
-                 .and_then(|c| c.get(0))
-                 .and_then(|c| c.get("text"))
-                 .and_then(|t| t.as_str())
-                 .unwrap_or("No response"));
+    println!(
+        "✅ Enable tool response: {}",
+        enable_response
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("No response")
+    );
 
     // Step 3: Verify tool was enabled (should appear in tools list)
     let tools_after_enable = call_mcp_endpoint(3003, "tools/list", json!({})).await?;
@@ -190,13 +223,24 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
     if !has_memory_read_graph {
         println!("❌ Memory read graph tool not found! Available tools:");
         for tool in tools_list {
-            println!("  - {}", tool.get("name").and_then(|n| n.as_str()).unwrap_or("unknown"));
+            println!(
+                "  - {}",
+                tool.get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown")
+            );
         }
-        println!("🔍 Full response: {}", serde_json::to_string_pretty(&tools_after_enable)?);
+        println!(
+            "🔍 Full response: {}",
+            serde_json::to_string_pretty(&tools_after_enable)?
+        );
     }
 
     // Continue with test but don't fail yet - let's see what save_config does
-    println!("✅ Tool enable attempt completed (found memory_read_graph: {})", has_memory_read_graph);
+    println!(
+        "✅ Tool enable attempt completed (found memory_read_graph: {})",
+        has_memory_read_graph
+    );
 
     // Step 4: Read current config file (should NOT have the change yet)
     let config_before_save = fs::read_to_string(&config_path)?;
@@ -210,18 +254,27 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
         .and_then(|e| e.as_bool())
         .unwrap_or(false);
 
-    assert!(!read_graph_enabled_before, "Config file should not be updated before save_config");
+    assert!(
+        !read_graph_enabled_before,
+        "Config file should not be updated before save_config"
+    );
     println!("✅ Verified config file unchanged before save");
 
     // Step 5: Call save_config
-    let save_response = call_mcp_endpoint(3003, "tools/call", json!({
-        "name": "save_config",
-        "arguments": {
-            "restart_proxy": false
-        }
-    })).await?;
+    let save_response = call_mcp_endpoint(
+        3003,
+        "tools/call",
+        json!({
+            "name": "save_config",
+            "arguments": {
+                "restart_proxy": false
+            }
+        }),
+    )
+    .await?;
 
-    let save_response_text = save_response.get("result")
+    let save_response_text = save_response
+        .get("result")
         .and_then(|r| r.get("content"))
         .and_then(|c| c.get(0))
         .and_then(|c| c.get("text"))
@@ -238,14 +291,22 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
         println!("📂 Temp dir path: {:?}", temp_dir.path());
 
         // Let's check if the server can read the directory
-        let list_dir_response = call_mcp_endpoint(3003, "tools/call", json!({
-            "name": "filesystem_read_file",
-            "arguments": {
-                "path": config_path.to_string_lossy()
-            }
-        })).await;
+        let list_dir_response = call_mcp_endpoint(
+            3003,
+            "tools/call",
+            json!({
+                "name": "filesystem_read_file",
+                "arguments": {
+                    "path": config_path.to_string_lossy()
+                }
+            }),
+        )
+        .await;
 
-        println!("🔍 Can server read config file? {:?}", list_dir_response.is_ok());
+        println!(
+            "🔍 Can server read config file? {:?}",
+            list_dir_response.is_ok()
+        );
 
         // This might be a path resolution issue - let's continue to see full behavior
         println!("⚠️  Save config failed, but continuing test to collect data...");
@@ -268,13 +329,22 @@ async fn test_save_config_integration() -> Result<(), Box<dyn std::error::Error>
         println!("✅ Verified config file updated after save");
     } else {
         println!("❌ Config file was NOT updated after save");
-        println!("📄 Config before save: memory.tools.read_graph.enabled = {}", read_graph_enabled_before);
-        println!("📄 Config after save: memory.tools.read_graph.enabled = {}", read_graph_enabled_after);
+        println!(
+            "📄 Config before save: memory.tools.read_graph.enabled = {}",
+            read_graph_enabled_before
+        );
+        println!(
+            "📄 Config after save: memory.tools.read_graph.enabled = {}",
+            read_graph_enabled_after
+        );
     }
 
     // Only assert if we actually successfully enabled the tool earlier
     if has_memory_read_graph {
-        assert!(read_graph_enabled_after, "Config file should be updated after save_config");
+        assert!(
+            read_graph_enabled_after,
+            "Config file should be updated after save_config"
+        );
     }
 
     println!("🎉 Save config integration test completed!");
@@ -301,21 +371,30 @@ async fn test_save_config_error_handling() -> Result<(), Box<dyn std::error::Err
     fs::set_permissions(&config_path, permissions)?;
 
     // Try to save config - should fail gracefully
-    let save_response = call_mcp_endpoint(3004, "tools/call", json!({
-        "name": "save_config",
-        "arguments": {
-            "restart_proxy": false
-        }
-    })).await?;
+    let save_response = call_mcp_endpoint(
+        3004,
+        "tools/call",
+        json!({
+            "name": "save_config",
+            "arguments": {
+                "restart_proxy": false
+            }
+        }),
+    )
+    .await?;
 
-    let response_text = save_response.get("result")
+    let response_text = save_response
+        .get("result")
         .and_then(|r| r.get("content"))
         .and_then(|c| c.get(0))
         .and_then(|c| c.get("text"))
         .and_then(|t| t.as_str())
         .unwrap_or("");
 
-    assert!(response_text.contains("❌"), "Should return error message when config file is read-only");
+    assert!(
+        response_text.contains("❌"),
+        "Should return error message when config file is read-only"
+    );
     println!("✅ Error handling test passed: {}", response_text);
 
     Ok(())

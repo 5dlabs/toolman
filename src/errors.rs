@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 
 /// Comprehensive error types for the MCP Bridge Proxy
 #[derive(Error, Debug, Clone)]
@@ -15,7 +15,10 @@ pub enum BridgeError {
     ServerTimeout { name: String, timeout_secs: u64 },
 
     #[error("Server '{name}' process crashed with exit code {exit_code:?}")]
-    ServerCrashed { name: String, exit_code: Option<i32> },
+    ServerCrashed {
+        name: String,
+        exit_code: Option<i32>,
+    },
 
     #[error("Server '{name}' not found in configuration")]
     ServerNotFound { name: String },
@@ -34,7 +37,11 @@ pub enum BridgeError {
     InvalidToolFormat { name: String },
 
     #[error("Tool call failed for '{tool}' on server '{server}': {reason}")]
-    ToolCallFailed { server: String, tool: String, reason: String },
+    ToolCallFailed {
+        server: String,
+        tool: String,
+        reason: String,
+    },
 
     // Protocol and Communication Errors
     #[error("Invalid JSON-RPC request: {reason}")]
@@ -164,64 +171,65 @@ impl ErrorContext {
             BridgeError::ServerNotFound { name } => (
                 ErrorSeverity::Error,
                 RecoveryStrategy::ManualIntervention {
-                    message: format!("Server '{}' not found in configuration", name)
-                }
+                    message: format!("Server '{name}' not found in configuration"),
+                },
             ),
 
             BridgeError::ServerTimeout { .. } => (
                 ErrorSeverity::Warning,
-                RecoveryStrategy::Retry { max_attempts: 3, backoff_ms: 1000 }
+                RecoveryStrategy::Retry {
+                    max_attempts: 3,
+                    backoff_ms: 1000,
+                },
             ),
 
             BridgeError::ServerCrashed { name, .. } => (
                 ErrorSeverity::Error,
-                RecoveryStrategy::RestartServer { server_name: name.clone() }
+                RecoveryStrategy::RestartServer {
+                    server_name: name.clone(),
+                },
             ),
 
             BridgeError::ServerConnectionLost { name, .. } => (
                 ErrorSeverity::Warning,
-                RecoveryStrategy::RestartServer { server_name: name.clone() }
+                RecoveryStrategy::RestartServer {
+                    server_name: name.clone(),
+                },
             ),
 
-            BridgeError::ToolNotFound { .. } => (
-                ErrorSeverity::Info,
-                RecoveryStrategy::None
-            ),
+            BridgeError::ToolNotFound { .. } => (ErrorSeverity::Info, RecoveryStrategy::None),
 
-            BridgeError::ToolDisabled { .. } => (
-                ErrorSeverity::Info,
-                RecoveryStrategy::None
-            ),
+            BridgeError::ToolDisabled { .. } => (ErrorSeverity::Info, RecoveryStrategy::None),
 
-            BridgeError::InvalidJsonRpc { .. } => (
-                ErrorSeverity::Warning,
-                RecoveryStrategy::None
-            ),
+            BridgeError::InvalidJsonRpc { .. } => (ErrorSeverity::Warning, RecoveryStrategy::None),
 
             BridgeError::ConfigurationError { .. } => (
                 ErrorSeverity::Error,
                 RecoveryStrategy::ManualIntervention {
-                    message: "Configuration issue requires manual review".to_string()
-                }
+                    message: "Configuration issue requires manual review".to_string(),
+                },
             ),
 
             BridgeError::ResourceLimitExceeded { .. } => (
                 ErrorSeverity::Critical,
                 RecoveryStrategy::GracefulDegradation {
-                    feature: "New server connections".to_string()
-                }
+                    feature: "New server connections".to_string(),
+                },
             ),
 
             BridgeError::AllFallbacksFailed { tool } => (
                 ErrorSeverity::Error,
                 RecoveryStrategy::ManualIntervention {
-                    message: format!("All servers failed for tool '{}'", tool)
-                }
+                    message: format!("All servers failed for tool '{tool}'"),
+                },
             ),
 
             _ => (
                 ErrorSeverity::Warning,
-                RecoveryStrategy::Retry { max_attempts: 2, backoff_ms: 500 }
+                RecoveryStrategy::Retry {
+                    max_attempts: 2,
+                    backoff_ms: 500,
+                },
             ),
         }
     }
@@ -231,30 +239,45 @@ impl ErrorContext {
         match &self.error {
             BridgeError::ServerTimeout { name, timeout_secs } => {
                 format!("⏱️ Server '{}' is taking longer than expected ({}s). This might be temporary - please try again.", name, timeout_secs)
-            },
+            }
 
             BridgeError::ServerCrashed { name, .. } => {
-                format!("🔄 Server '{}' encountered an issue and is being restarted automatically.", name)
-            },
+                format!(
+                    "🔄 Server '{}' encountered an issue and is being restarted automatically.",
+                    name
+                )
+            }
 
             BridgeError::ToolNotFound { server, tool } => {
                 format!("🔧 Tool '{}' is not available on server '{}'. Check if the tool exists or try enabling it first.", tool, server)
-            },
+            }
 
             BridgeError::ToolDisabled { tool } => {
-                format!("⚠️ Tool '{}' is currently disabled. Use enable_tool to make it available.", tool)
-            },
+                format!(
+                    "⚠️ Tool '{}' is currently disabled. Use enable_tool to make it available.",
+                    tool
+                )
+            }
 
             BridgeError::ConfigurationError { reason } => {
-                format!("⚙️ Configuration issue: {}. Please check your servers-config.json file.", reason)
-            },
+                format!(
+                    "⚙️ Configuration issue: {}. Please check your servers-config.json file.",
+                    reason
+                )
+            }
 
             BridgeError::InvalidJsonRpc { reason } => {
-                format!("📝 Request format issue: {}. Please check the request structure.", reason)
-            },
+                format!(
+                    "📝 Request format issue: {}. Please check the request structure.",
+                    reason
+                )
+            }
 
             _ => {
-                format!("❌ An error occurred: {}. Please try again or contact support.", self.error)
+                format!(
+                    "❌ An error occurred: {}. Please try again or contact support.",
+                    self.error
+                )
             }
         }
     }
@@ -279,7 +302,10 @@ pub type BridgeResult<T> = Result<T, ErrorContext>;
 /// Helper trait for converting errors to our error context
 pub trait IntoBridgeError<T> {
     fn into_bridge_error(self) -> BridgeResult<T>;
-    fn into_bridge_error_with_context(self, context_fn: impl FnOnce() -> ErrorContext) -> BridgeResult<T>;
+    fn into_bridge_error_with_context(
+        self,
+        context_fn: impl FnOnce() -> ErrorContext,
+    ) -> BridgeResult<T>;
 }
 
 impl<T, E> IntoBridgeError<T> for Result<T, E>
@@ -287,12 +313,17 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     fn into_bridge_error(self) -> BridgeResult<T> {
-        self.map_err(|e| ErrorContext::new(BridgeError::Internal {
-            reason: e.to_string()
-        }))
+        self.map_err(|e| {
+            ErrorContext::new(BridgeError::Internal {
+                reason: e.to_string(),
+            })
+        })
     }
 
-    fn into_bridge_error_with_context(self, context_fn: impl FnOnce() -> ErrorContext) -> BridgeResult<T> {
+    fn into_bridge_error_with_context(
+        self,
+        context_fn: impl FnOnce() -> ErrorContext,
+    ) -> BridgeResult<T> {
         self.map_err(|_| context_fn())
     }
 }
@@ -305,7 +336,7 @@ mod tests {
     fn test_error_severity_assignment() {
         let error = BridgeError::ServerTimeout {
             name: "test".to_string(),
-            timeout_secs: 10
+            timeout_secs: 10,
         };
         let context = ErrorContext::new(error);
 
@@ -317,7 +348,7 @@ mod tests {
     fn test_user_message_formatting() {
         let error = BridgeError::ToolNotFound {
             server: "git".to_string(),
-            tool: "commit".to_string()
+            tool: "commit".to_string(),
         };
         let context = ErrorContext::new(error);
 

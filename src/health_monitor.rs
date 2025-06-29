@@ -1,9 +1,9 @@
-use crate::errors::{BridgeError, ErrorContext, BridgeResult};
+use crate::errors::{BridgeError, BridgeResult, ErrorContext};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex};
+use tokio::sync::{Mutex, RwLock};
 use tokio::time::{Duration, Instant};
-use serde::{Serialize, Deserialize};
 
 /// Health status of a server
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,7 +13,9 @@ pub enum ServerHealth {
     /// Server is experiencing issues but still responsive
     Degraded { reason: String },
     /// Server is unresponsive
-    Unresponsive { last_response: chrono::DateTime<chrono::Utc> },
+    Unresponsive {
+        last_response: chrono::DateTime<chrono::Utc>,
+    },
     /// Server has crashed and needs restart
     Crashed { exit_code: Option<i32> },
     /// Server is being restarted
@@ -112,8 +114,10 @@ impl ServerHealthStatus {
         if self.average_response_time.is_zero() {
             self.average_response_time = response_time;
         } else {
-            let total_time = self.average_response_time.as_millis() * (self.successful_requests - 1) as u128;
-            let new_average = (total_time + response_time.as_millis()) / self.successful_requests as u128;
+            let total_time =
+                self.average_response_time.as_millis() * (self.successful_requests - 1) as u128;
+            let new_average =
+                (total_time + response_time.as_millis()) / self.successful_requests as u128;
             self.average_response_time = Duration::from_millis(new_average as u64);
         }
     }
@@ -128,8 +132,12 @@ impl ServerHealthStatus {
         // Update health status based on failure pattern
         if self.consecutive_failures >= 3 {
             self.health = ServerHealth::Unresponsive {
-                last_response: self.last_successful_check
-                    .map(|instant| chrono::Utc::now() - chrono::Duration::from_std(instant.elapsed()).unwrap_or_default())
+                last_response: self
+                    .last_successful_check
+                    .map(|instant| {
+                        chrono::Utc::now()
+                            - chrono::Duration::from_std(instant.elapsed()).unwrap_or_default()
+                    })
                     .unwrap_or_else(chrono::Utc::now),
             };
         }
@@ -233,7 +241,10 @@ impl HealthMonitor {
                     ServerHealth::Degraded { .. } | ServerHealth::Unresponsive { .. } => {
                         status.health = ServerHealth::Healthy;
                         status.uptime_start = Some(Instant::now());
-                        println!("✅ Server '{}' has recovered and is now healthy", server_name);
+                        println!(
+                            "✅ Server '{}' has recovered and is now healthy",
+                            server_name
+                        );
                     }
                     _ => {}
                 }
@@ -249,8 +260,10 @@ impl HealthMonitor {
 
             // Check if we need to trigger recovery
             if status.consecutive_failures >= self.config.failure_threshold {
-                println!("⚠️ Server '{}' marked as unhealthy after {} consecutive failures",
-                    server_name, status.consecutive_failures);
+                println!(
+                    "⚠️ Server '{}' marked as unhealthy after {} consecutive failures",
+                    server_name, status.consecutive_failures
+                );
             }
         }
     }
@@ -260,10 +273,12 @@ impl HealthMonitor {
         let health_map = self.server_health.read().await;
         if let Some(status) = health_map.get(server_name) {
             match &status.health {
-                ServerHealth::Crashed { .. } => status.restart_attempts < self.config.max_restart_attempts,
-                ServerHealth::Unresponsive { .. } => {
-                    status.consecutive_failures >= self.config.failure_threshold &&
+                ServerHealth::Crashed { .. } => {
                     status.restart_attempts < self.config.max_restart_attempts
+                }
+                ServerHealth::Unresponsive { .. } => {
+                    status.consecutive_failures >= self.config.failure_threshold
+                        && status.restart_attempts < self.config.max_restart_attempts
                 }
                 _ => false,
             }
@@ -278,7 +293,10 @@ impl HealthMonitor {
         if let Some(status) = health_map.get_mut(server_name) {
             status.health = ServerHealth::Crashed { exit_code };
             status.uptime_start = None;
-            println!("💥 Server '{}' marked as crashed (exit code: {:?})", server_name, exit_code);
+            println!(
+                "💥 Server '{}' marked as crashed (exit code: {:?})",
+                server_name, exit_code
+            );
         }
     }
 
@@ -290,7 +308,10 @@ impl HealthMonitor {
             status.health = ServerHealth::Restarting {
                 attempt: status.restart_attempts,
             };
-            println!("🔄 Server '{}' restart attempt #{}", server_name, status.restart_attempts);
+            println!(
+                "🔄 Server '{}' restart attempt #{}",
+                server_name, status.restart_attempts
+            );
         }
     }
 
@@ -302,7 +323,10 @@ impl HealthMonitor {
             status.consecutive_failures = 0;
             status.consecutive_successes = 1;
             status.uptime_start = Some(Instant::now());
-            println!("✅ Server '{}' marked as healthy after restart", server_name);
+            println!(
+                "✅ Server '{}' marked as healthy after restart",
+                server_name
+            );
         }
     }
 
@@ -314,10 +338,10 @@ impl HealthMonitor {
             .filter(|(_, status)| {
                 matches!(
                     status.health,
-                    ServerHealth::Degraded { .. } |
-                    ServerHealth::Unresponsive { .. } |
-                    ServerHealth::Crashed { .. } |
-                    ServerHealth::Restarting { .. }
+                    ServerHealth::Degraded { .. }
+                        | ServerHealth::Unresponsive { .. }
+                        | ServerHealth::Crashed { .. }
+                        | ServerHealth::Restarting { .. }
                 )
             })
             .map(|(name, status)| (name.clone(), status.clone()))
@@ -381,7 +405,8 @@ impl HealthMonitor {
             server_name.hash(&mut hasher);
             let hash = hasher.finish();
 
-            if hash % 50 == 0 {  // 2% failure rate for simulation
+            if hash % 50 == 0 {
+                // 2% failure rate for simulation
                 Err(ErrorContext::new(BridgeError::HealthCheckFailed {
                     server: server_name.to_string(),
                     reason: "Simulated health check failure".to_string(),
@@ -428,7 +453,7 @@ mod tests {
         status.record_success(Duration::from_millis(200));
         status.record_failure("test error");
 
-        assert_eq!(status.success_rate(), 66.66666666666667);
+        assert!((status.success_rate() - 66.66666666666667).abs() < 0.00001);
         assert_eq!(status.total_requests, 3);
         assert_eq!(status.successful_requests, 2);
         assert_eq!(status.failed_requests, 1);
@@ -440,10 +465,15 @@ mod tests {
         let mut monitor = HealthMonitor::new(config);
 
         // Start monitoring
-        monitor.start_monitoring_server("test_server".to_string()).await.unwrap();
+        monitor
+            .start_monitoring_server("test_server".to_string())
+            .await
+            .unwrap();
 
         // Record some operations
-        monitor.record_success("test_server", Duration::from_millis(50)).await;
+        monitor
+            .record_success("test_server", Duration::from_millis(50))
+            .await;
         monitor.record_failure("test_server", "test error").await;
 
         // Check health status

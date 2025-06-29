@@ -1,6 +1,6 @@
+use serde_json::json;
 use std::fs;
 use tempfile::TempDir;
-use serde_json::json;
 use toolman::ConfigManager;
 
 #[tokio::test]
@@ -41,7 +41,10 @@ async fn test_config_manager_save() -> Result<(), Box<dyn std::error::Error>> {
 
     let memory_server = servers.get("memory").unwrap();
     let read_graph_enabled = memory_server.tools.get("read_graph").unwrap().enabled;
-    assert!(!read_graph_enabled, "read_graph should initially be disabled");
+    assert!(
+        !read_graph_enabled,
+        "read_graph should initially be disabled"
+    );
 
     println!("✅ Initial config loaded correctly");
 
@@ -65,7 +68,10 @@ async fn test_config_manager_save() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|e| e.as_bool())
         .unwrap_or(false);
 
-    assert!(read_graph_enabled_after_save, "read_graph should be enabled after save");
+    assert!(
+        read_graph_enabled_after_save,
+        "read_graph should be enabled after save"
+    );
 
     println!("✅ Configuration changes persisted correctly");
     println!("🎉 ConfigManager save functionality works!");

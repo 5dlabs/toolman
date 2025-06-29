@@ -1,11 +1,11 @@
-use crate::errors::{BridgeError, ErrorContext, RecoveryStrategy, BridgeResult};
-use crate::health_monitor::{HealthMonitor, HealthCheckConfig};
+use crate::errors::{BridgeError, BridgeResult, ErrorContext, RecoveryStrategy};
+use crate::health_monitor::{HealthCheckConfig, HealthMonitor};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex};
-use tokio::time::{Duration, Instant};
-use tokio::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
+use tokio::process::Command;
+use tokio::sync::{Mutex, RwLock};
+use tokio::time::{Duration, Instant};
 
 /// Configuration for recovery strategies
 #[derive(Debug, Clone)]
@@ -108,7 +108,9 @@ impl ServerRecoveryManager {
         // Register with health monitor
         {
             let mut health_monitor = self.health_monitor.lock().await;
-            health_monitor.start_monitoring_server(server_name.clone()).await?;
+            health_monitor
+                .start_monitoring_server(server_name.clone())
+                .await?;
         }
 
         // Store connection info
@@ -134,7 +136,10 @@ impl ServerRecoveryManager {
             circuit_breakers.insert(server_name.clone(), false);
         }
 
-        println!("📋 Registered server '{}' for monitoring and recovery", server_name);
+        println!(
+            "📋 Registered server '{}' for monitoring and recovery",
+            server_name
+        );
         Ok(())
     }
 
@@ -175,10 +180,13 @@ impl ServerRecoveryManager {
         match &error_context.recovery_strategy {
             RecoveryStrategy::None => RecoveryAction::None,
 
-            RecoveryStrategy::Retry { max_attempts: _, backoff_ms } => {
+            RecoveryStrategy::Retry {
+                max_attempts: _,
+                backoff_ms,
+            } => {
                 let delay = Duration::from_millis(*backoff_ms);
                 RecoveryAction::RetryWithDelay { delay }
-            },
+            }
 
             RecoveryStrategy::RestartServer { server_name } => {
                 // Check circuit breaker
@@ -203,21 +211,23 @@ impl ServerRecoveryManager {
                         reason: "Maximum restart attempts exceeded".to_string(),
                     }
                 }
-            },
+            }
 
             RecoveryStrategy::UseFallback { fallback_servers } => {
                 if let Some(fallback) = fallback_servers.first() {
                     // Try to find which server this error is for
                     if let BridgeError::ServerConnectionLost { name, .. }
                     | BridgeError::ServerCrashed { name, .. }
-                    | BridgeError::ServerTimeout { name, .. } = &error_context.error {
+                    | BridgeError::ServerTimeout { name, .. } = &error_context.error
+                    {
                         RecoveryAction::SwitchToFallback {
                             primary: name.clone(),
                             fallback: fallback.clone(),
                         }
                     } else {
                         RecoveryAction::RequireManualIntervention {
-                            message: "Fallback requested but cannot determine primary server".to_string(),
+                            message: "Fallback requested but cannot determine primary server"
+                                .to_string(),
                         }
                     }
                 } else {
@@ -225,19 +235,19 @@ impl ServerRecoveryManager {
                         message: "No fallback servers available".to_string(),
                     }
                 }
-            },
+            }
 
             RecoveryStrategy::ManualIntervention { message } => {
                 RecoveryAction::RequireManualIntervention {
                     message: message.clone(),
                 }
-            },
+            }
 
             RecoveryStrategy::GracefulDegradation { feature } => {
                 RecoveryAction::RequireManualIntervention {
                     message: format!("Graceful degradation: {} disabled", feature),
                 }
-            },
+            }
         }
     }
 
@@ -247,30 +257,31 @@ impl ServerRecoveryManager {
             RecoveryAction::None => {
                 // No action needed
                 Ok(())
-            },
+            }
 
             RecoveryAction::RetryWithDelay { delay } => {
                 println!("⏱️ Delaying retry for {:?}", delay);
                 tokio::time::sleep(delay).await;
                 Ok(())
-            },
+            }
 
             RecoveryAction::RestartServer { server_name } => {
                 self.restart_server(&server_name).await
-            },
+            }
 
             RecoveryAction::SwitchToFallback { primary, fallback } => {
                 self.switch_to_fallback(&primary, &fallback).await
-            },
+            }
 
-            RecoveryAction::MarkAsFailed { server_name, reason } => {
-                self.mark_server_as_failed(&server_name, &reason).await
-            },
+            RecoveryAction::MarkAsFailed {
+                server_name,
+                reason,
+            } => self.mark_server_as_failed(&server_name, &reason).await,
 
             RecoveryAction::RequireManualIntervention { message } => {
                 println!("🚨 Manual intervention required: {}", message);
                 Ok(())
-            },
+            }
         }
     }
 
@@ -300,16 +311,25 @@ impl ServerRecoveryManager {
             }
         };
 
-        let delay_multiplier = self.recovery_config.restart_backoff_multiplier.powi(restart_attempt as i32);
+        let delay_multiplier = self
+            .recovery_config
+            .restart_backoff_multiplier
+            .powi(restart_attempt as i32);
         let delay = std::cmp::min(
             Duration::from_millis(
-                (self.recovery_config.restart_base_delay.as_millis() as f32 * delay_multiplier) as u64
+                (self.recovery_config.restart_base_delay.as_millis() as f32 * delay_multiplier)
+                    as u64,
             ),
             self.recovery_config.restart_max_delay,
         );
 
         if delay > Duration::from_millis(0) {
-            println!("⏱️ Waiting {:?} before restart attempt #{} for server '{}'", delay, restart_attempt + 1, server_name);
+            println!(
+                "⏱️ Waiting {:?} before restart attempt #{} for server '{}'",
+                delay,
+                restart_attempt + 1,
+                server_name
+            );
             tokio::time::sleep(delay).await;
         }
 
@@ -351,7 +371,11 @@ impl ServerRecoveryManager {
                     health_monitor.mark_server_healthy(server_name).await;
                 }
 
-                println!("✅ Successfully restarted server '{}' (PID: {:?})", server_name, process.id());
+                println!(
+                    "✅ Successfully restarted server '{}' (PID: {:?})",
+                    server_name,
+                    process.id()
+                );
                 Ok(())
             }
             Err(e) => {
@@ -368,12 +392,16 @@ impl ServerRecoveryManager {
 
     /// Switch to a fallback server
     async fn switch_to_fallback(&self, primary: &str, fallback: &str) -> BridgeResult<()> {
-        println!("🔄 Switching from primary server '{}' to fallback '{}'", primary, fallback);
+        println!(
+            "🔄 Switching from primary server '{}' to fallback '{}'",
+            primary, fallback
+        );
 
         // Update fallback mappings
         {
             let mut mappings = self.fallback_mappings.write().await;
-            mappings.entry(primary.to_string())
+            mappings
+                .entry(primary.to_string())
                 .or_insert_with(Vec::new)
                 .push(fallback.to_string());
         }
@@ -429,14 +457,18 @@ impl ServerRecoveryManager {
         if let Some(connection_info) = connections.get_mut(server_name) {
             connection_info.circuit_breaker_trips += 1;
 
-            if connection_info.circuit_breaker_trips >= self.recovery_config.circuit_breaker_threshold {
+            if connection_info.circuit_breaker_trips
+                >= self.recovery_config.circuit_breaker_threshold
+            {
                 connection_info.circuit_breaker_opened_at = Some(Instant::now());
 
                 let mut circuit_breakers = self.circuit_breakers.write().await;
                 circuit_breakers.insert(server_name.to_string(), true);
 
-                println!("🔴 Circuit breaker opened for server '{}' after {} failures",
-                    server_name, connection_info.circuit_breaker_trips);
+                println!(
+                    "🔴 Circuit breaker opened for server '{}' after {} failures",
+                    server_name, connection_info.circuit_breaker_trips
+                );
             }
         }
     }
@@ -460,7 +492,9 @@ impl ServerRecoveryManager {
         // Record with health monitor
         {
             let health_monitor = self.health_monitor.lock().await;
-            health_monitor.record_success(server_name, response_time).await;
+            health_monitor
+                .record_success(server_name, response_time)
+                .await;
         }
     }
 
@@ -484,7 +518,10 @@ impl ServerRecoveryManager {
             let circuit_open = circuit_breakers.get(server_name).copied().unwrap_or(false);
 
             let server_status = if circuit_open {
-                format!("Circuit breaker open ({} trips)", connection_info.circuit_breaker_trips)
+                format!(
+                    "Circuit breaker open ({} trips)",
+                    connection_info.circuit_breaker_trips
+                )
             } else if let Some(last_restart) = connection_info.last_restart {
                 format!("Healthy (last restart: {:?} ago)", last_restart.elapsed())
             } else {
@@ -527,15 +564,20 @@ mod tests {
         let mut manager = ServerRecoveryManager::new(recovery_config, health_config);
 
         // Register a server
-        manager.register_server(
-            "test_server".to_string(),
-            "echo".to_string(),
-            vec!["hello".to_string()],
-            HashMap::new(),
-        ).await.unwrap();
+        manager
+            .register_server(
+                "test_server".to_string(),
+                "echo".to_string(),
+                vec!["hello".to_string()],
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
 
         // Record success and failure
-        manager.record_success("test_server", Duration::from_millis(100)).await;
+        manager
+            .record_success("test_server", Duration::from_millis(100))
+            .await;
         manager.record_failure("test_server", "test error").await;
 
         // Get status

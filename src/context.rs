@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// User context configuration stored per context
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +137,12 @@ impl ContextManager {
     }
 
     /// Load or create a context for the given project and user
-    pub fn load_context(&mut self, project_path: String, user_id: Option<String>, client_type: Option<String>) -> Result<()> {
+    pub fn load_context(
+        &mut self,
+        project_path: String,
+        user_id: Option<String>,
+        client_type: Option<String>,
+    ) -> Result<()> {
         let context_key = if let Some(ref uid) = user_id {
             format!("{}+{}", project_path, uid)
         } else {
@@ -183,7 +188,9 @@ impl ContextManager {
     /// Save the current context to file
     pub fn save_context(&self) -> Result<()> {
         if let Some(ref context) = self.current_context {
-            let context_file = self.contexts_dir.join(format!("{}.json", context.context_id));
+            let context_file = self
+                .contexts_dir
+                .join(format!("{}.json", context.context_id));
             let content = serde_json::to_string_pretty(context)?;
             std::fs::write(&context_file, content)?;
         }
@@ -246,10 +253,15 @@ impl ContextManager {
             if path.extension().map_or(false, |ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)?;
                 if let Ok(context) = serde_json::from_str::<ContextConfig>(&content) {
-                    if let Ok(last_updated) = chrono::DateTime::parse_from_rfc3339(&context.last_updated) {
+                    if let Ok(last_updated) =
+                        chrono::DateTime::parse_from_rfc3339(&context.last_updated)
+                    {
                         if last_updated.with_timezone(&chrono::Utc) < thirty_days_ago {
                             if let Err(e) = std::fs::remove_file(&path) {
-                                eprintln!("Warning: Failed to remove old context file {:?}: {}", path, e);
+                                eprintln!(
+                                    "Warning: Failed to remove old context file {:?}: {}",
+                                    path, e
+                                );
                             }
                         }
                     }

@@ -1,21 +1,15 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::net::SocketAddr;
 use anyhow::Result;
+use axum::{extract::State, http::StatusCode, response::Json, routing::post, Router};
 use clap::Parser;
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-    routing::post,
-    Router,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::CorsLayer;
-use toolman::{ConfigManager, ServerConfig, resolve_working_directory, ContextManager};
 use toolman::tool_suggester::ToolSuggester;
+use toolman::{resolve_working_directory, ConfigManager, ContextManager, ServerConfig};
+use tower_http::cors::CorsLayer;
 
 /// Simple HTTP MCP Bridge Server
 #[derive(Parser)]
@@ -68,7 +62,10 @@ enum ToolParseError {
 /// - "memory_delete_entities" → ParsedTool { server_name: "memory", tool_name: "delete_entities" }
 /// - "filesystem_read_file" → ParsedTool { server_name: "filesystem", tool_name: "read_file" }
 /// - "complex_server_complex_tool_name" → ParsedTool { server_name: "complex_server", tool_name: "complex_tool_name" }
-fn parse_tool_name_with_servers(tool_name: &str, available_servers: &[String]) -> Result<ParsedTool, ToolParseError> {
+fn parse_tool_name_with_servers(
+    tool_name: &str,
+    available_servers: &[String],
+) -> Result<ParsedTool, ToolParseError> {
     if tool_name.is_empty() {
         return Err(ToolParseError::EmptyToolName);
     }
@@ -81,7 +78,8 @@ fn parse_tool_name_with_servers(tool_name: &str, available_servers: &[String]) -
         .collect();
 
     // Find underscore positions
-    let underscore_positions: Vec<usize> = tool_name.char_indices()
+    let underscore_positions: Vec<usize> = tool_name
+        .char_indices()
         .filter(|(_, c)| *c == '_')
         .map(|(i, _)| i)
         .collect();
@@ -97,7 +95,10 @@ fn parse_tool_name_with_servers(tool_name: &str, available_servers: &[String]) -
 
         if !potential_server_underscore.is_empty() && !potential_tool.is_empty() {
             // Check if this matches any of our known servers (in underscore format)
-            if underscore_servers.iter().any(|s| s == potential_server_underscore) {
+            if underscore_servers
+                .iter()
+                .any(|s| s == potential_server_underscore)
+            {
                 // Find the original server name (with hyphens)
                 let original_server = available_servers
                     .iter()
@@ -113,7 +114,9 @@ fn parse_tool_name_with_servers(tool_name: &str, available_servers: &[String]) -
     }
 
     Err(ToolParseError::InvalidFormat(format!(
-        "{} (no matching server found in: {})", tool_name, available_servers.join(", ")
+        "{} (no matching server found in: {})",
+        tool_name,
+        available_servers.join(", ")
     )))
 }
 
@@ -124,7 +127,8 @@ fn parse_tool_name(tool_name: &str) -> Result<ParsedTool, ToolParseError> {
         return Err(ToolParseError::EmptyToolName);
     }
 
-    let underscore_positions: Vec<usize> = tool_name.char_indices()
+    let underscore_positions: Vec<usize> = tool_name
+        .char_indices()
         .filter(|(_, c)| *c == '_')
         .map(|(i, _)| i)
         .collect();
@@ -150,8 +154,8 @@ fn parse_tool_name(tool_name: &str) -> Result<ParsedTool, ToolParseError> {
 
 // Server connection pool structures and implementations
 use std::process::Stdio;
-use tokio::process::{Child, Command};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -183,10 +187,17 @@ impl ServerConnectionPool {
     }
 
     /// Start an MCP server with optional user working directory context
-    async fn start_server_with_context(&self, server_name: &str, user_working_dir: Option<&std::path::Path>) -> anyhow::Result<()> {
+    async fn start_server_with_context(
+        &self,
+        server_name: &str,
+        user_working_dir: Option<&std::path::Path>,
+    ) -> anyhow::Result<()> {
         // For filesystem server, always restart with new context to ensure correct allowed directories
         if server_name == "filesystem" {
-            println!("🔄 Restarting filesystem server with user context: {:?}", user_working_dir);
+            println!(
+                "🔄 Restarting filesystem server with user context: {:?}",
+                user_working_dir
+            );
             let _ = self.stop_server(server_name).await; // Stop existing server if any
         } else {
             // Check if server is already connected for non-filesystem servers
@@ -198,8 +209,9 @@ impl ServerConnectionPool {
         }
 
         let servers = self.config_manager.read().await;
-        let config = servers.get_servers().get(server_name)
-            .ok_or_else(|| anyhow::anyhow!("Server '{}' not found in configuration", server_name))?;
+        let config = servers.get_servers().get(server_name).ok_or_else(|| {
+            anyhow::anyhow!("Server '{}' not found in configuration", server_name)
+        })?;
 
         println!("🚀 Starting MCP server: {}", server_name);
 
@@ -209,7 +221,11 @@ impl ServerConnectionPool {
         // For filesystem server, override args to use user's working directory
         if server_name == "filesystem" && user_working_dir.is_some() {
             let user_dir = user_working_dir.unwrap();
-            println!("📁 [{}] Using user working directory for filesystem server: {}", server_name, user_dir.display());
+            println!(
+                "📁 [{}] Using user working directory for filesystem server: {}",
+                server_name,
+                user_dir.display()
+            );
 
             // Build filesystem-specific args: npx -y @modelcontextprotocol/server-filesystem <user_working_dir>
             let mut fs_args = Vec::new();
@@ -228,14 +244,21 @@ impl ServerConnectionPool {
             .stderr(Stdio::piped());
 
         // Set working directory (default to project directory if not specified)
-        let project_dir = servers.get_config_path().parent()
+        let project_dir = servers
+            .get_config_path()
+            .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
-        let working_dir = config.working_directory
+        let working_dir = config
+            .working_directory
             .as_ref()
             .map(|wd| resolve_working_directory(wd, project_dir))
             .unwrap_or_else(|| project_dir.to_path_buf());
         cmd.current_dir(&working_dir);
-        println!("🔍 [{}] Setting working directory: {}", server_name, working_dir.display());
+        println!(
+            "🔍 [{}] Setting working directory: {}",
+            server_name,
+            working_dir.display()
+        );
 
         // Inherit all environment variables from parent process
         cmd.envs(std::env::vars());
@@ -251,38 +274,64 @@ impl ServerConnectionPool {
             "memory" => {
                 // Memory server needs MEMORY_FILE_PATH set to project directory
                 let memory_file = working_dir.join("memory.json");
-                cmd.env("MEMORY_FILE_PATH", memory_file.to_string_lossy().to_string());
-                println!("🧠 [{}] Setting MEMORY_FILE_PATH: {}", server_name, memory_file.display());
+                cmd.env(
+                    "MEMORY_FILE_PATH",
+                    memory_file.to_string_lossy().to_string(),
+                );
+                println!(
+                    "🧠 [{}] Setting MEMORY_FILE_PATH: {}",
+                    server_name,
+                    memory_file.display()
+                );
             }
             "docs-manager" | "mcp-docs-service" => {
                 // MCP Docs service - set default docs directory
                 let docs_dir = working_dir.join("docs");
                 cmd.env("MCP_DOCS_ROOT", docs_dir.to_string_lossy().to_string());
-                println!("📚 [{}] Setting MCP_DOCS_ROOT: {}", server_name, docs_dir.display());
+                println!(
+                    "📚 [{}] Setting MCP_DOCS_ROOT: {}",
+                    server_name,
+                    docs_dir.display()
+                );
                 // TODO: Modify command args to include docs path as well
             }
             "filesystem" => {
                 // Filesystem server uses command-line args, not environment variables
                 // Args are handled above in the filesystem-specific section
-                println!("📁 [{}] Filesystem server configured via command-line args", server_name);
+                println!(
+                    "📁 [{}] Filesystem server configured via command-line args",
+                    server_name
+                );
             }
             name if name.contains("file") || name.contains("docs") || name.contains("storage") => {
                 // Generic file-related servers - set working directory env var
-                cmd.env("WORKING_DIRECTORY", working_dir.to_string_lossy().to_string());
+                cmd.env(
+                    "WORKING_DIRECTORY",
+                    working_dir.to_string_lossy().to_string(),
+                );
                 cmd.env("PROJECT_DIR", working_dir.to_string_lossy().to_string());
-                println!("📂 [{}] Setting PROJECT_DIR and WORKING_DIRECTORY: {}", server_name, working_dir.display());
+                println!(
+                    "📂 [{}] Setting PROJECT_DIR and WORKING_DIRECTORY: {}",
+                    server_name,
+                    working_dir.display()
+                );
             }
             _ => {
                 // No special handling needed for this server
             }
         }
 
-        let mut process = cmd.spawn()
+        let mut process = cmd
+            .spawn()
             .map_err(|e| anyhow::anyhow!("Failed to spawn server '{}': {}", server_name, e))?;
 
-        let stdin = process.stdin.take()
+        let stdin = process
+            .stdin
+            .take()
             .ok_or_else(|| anyhow::anyhow!("Failed to get stdin for server '{}'", server_name))?;
-        let stdout = process.stdout.take()
+        let stdout = process
+            .stdout
+            .take()
             .ok_or_else(|| anyhow::anyhow!("Failed to get stdout for server '{}'", server_name))?;
 
         let stdout_reader = BufReader::new(stdout);
@@ -307,12 +356,18 @@ impl ServerConnectionPool {
             connections.insert(server_name.to_string(), connection_arc);
         }
 
-        println!("✅ Successfully started and initialized server: {}", server_name);
+        println!(
+            "✅ Successfully started and initialized server: {}",
+            server_name
+        );
         Ok(())
     }
 
     /// Initialize an MCP server with the required handshake
-    async fn initialize_server(&self, connection: Arc<Mutex<McpServerConnection>>) -> anyhow::Result<()> {
+    async fn initialize_server(
+        &self,
+        connection: Arc<Mutex<McpServerConnection>>,
+    ) -> anyhow::Result<()> {
         let server_name = {
             let conn = connection.lock().await;
             conn.server_name.clone()
@@ -350,7 +405,8 @@ impl ServerConnectionPool {
             "method": "notifications/initialized"
         });
 
-        self.send_notification(connection.clone(), initialized_notification).await?;
+        self.send_notification(connection.clone(), initialized_notification)
+            .await?;
 
         // Give server time to initialize
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -360,29 +416,44 @@ impl ServerConnectionPool {
     }
 
     /// Send a JSON-RPC request to a server
-    async fn send_request(&self, connection: Arc<Mutex<McpServerConnection>>, request: Value) -> anyhow::Result<()> {
+    async fn send_request(
+        &self,
+        connection: Arc<Mutex<McpServerConnection>>,
+        request: Value,
+    ) -> anyhow::Result<()> {
         let request_msg = format!("{}\n", serde_json::to_string(&request)?);
 
         let mut conn = connection.lock().await;
-        conn.stdin.write_all(request_msg.as_bytes()).await
+        conn.stdin
+            .write_all(request_msg.as_bytes())
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to send request: {}", e))?;
 
         Ok(())
     }
 
     /// Send a JSON-RPC notification to a server
-    async fn send_notification(&self, connection: Arc<Mutex<McpServerConnection>>, notification: Value) -> anyhow::Result<()> {
+    async fn send_notification(
+        &self,
+        connection: Arc<Mutex<McpServerConnection>>,
+        notification: Value,
+    ) -> anyhow::Result<()> {
         let notification_msg = format!("{}\n", serde_json::to_string(&notification)?);
 
         let mut conn = connection.lock().await;
-        conn.stdin.write_all(notification_msg.as_bytes()).await
+        conn.stdin
+            .write_all(notification_msg.as_bytes())
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to send notification: {}", e))?;
 
         Ok(())
     }
 
     /// Read a response from a server
-    async fn read_response(&self, connection: Arc<Mutex<McpServerConnection>>) -> anyhow::Result<Value> {
+    async fn read_response(
+        &self,
+        connection: Arc<Mutex<McpServerConnection>>,
+    ) -> anyhow::Result<Value> {
         let mut conn = connection.lock().await;
 
         let mut line = String::new();
@@ -390,8 +461,9 @@ impl ServerConnectionPool {
             line.clear();
             let bytes_read = tokio::time::timeout(
                 tokio::time::Duration::from_secs(30), // Increased timeout for large responses
-                conn.stdout_reader.read_line(&mut line)
-            ).await
+                conn.stdout_reader.read_line(&mut line),
+            )
+            .await
             .map_err(|_| anyhow::anyhow!("Timeout reading response"))?
             .map_err(|e| anyhow::anyhow!("Failed to read response: {}", e))?;
 
@@ -408,8 +480,9 @@ impl ServerConnectionPool {
                 }
 
                 // Check if this is an actual response (has "id" and either "result" or "error")
-                if response.get("id").is_some() &&
-                   (response.get("result").is_some() || response.get("error").is_some()) {
+                if response.get("id").is_some()
+                    && (response.get("result").is_some() || response.get("error").is_some())
+                {
                     // This is the actual response we want
                     return Ok(response);
                 }
@@ -423,17 +496,25 @@ impl ServerConnectionPool {
     }
 
     /// Forward a tool call to the appropriate server with user context
-    async fn forward_tool_call_with_context(&self, server_name: &str, tool_name: &str, arguments: Value, user_working_dir: Option<&std::path::Path>) -> anyhow::Result<Value> {
+    async fn forward_tool_call_with_context(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        arguments: Value,
+        user_working_dir: Option<&std::path::Path>,
+    ) -> anyhow::Result<Value> {
         // Start server if not already started, with user context for filesystem server
         if server_name == "filesystem" && user_working_dir.is_some() {
-            self.start_server_with_context(server_name, user_working_dir).await?;
+            self.start_server_with_context(server_name, user_working_dir)
+                .await?;
         } else {
             self.start_server(server_name).await?;
         }
 
         let connection = {
             let connections = self.connections.read().await;
-            connections.get(server_name)
+            connections
+                .get(server_name)
                 .ok_or_else(|| anyhow::anyhow!("Server '{}' connection not found", server_name))?
                 .clone()
         };
@@ -458,7 +539,10 @@ impl ServerConnectionPool {
             }
         });
 
-        println!("🔧 Forwarding tool call: {} to server {}", tool_name, server_name);
+        println!(
+            "🔧 Forwarding tool call: {} to server {}",
+            tool_name, server_name
+        );
 
         // Send request and read response
         self.send_request(connection.clone(), tool_request).await?;
@@ -470,8 +554,14 @@ impl ServerConnectionPool {
     }
 
     /// Forward a tool call to the appropriate server
-    async fn forward_tool_call(&self, server_name: &str, tool_name: &str, arguments: Value) -> anyhow::Result<Value> {
-        self.forward_tool_call_with_context(server_name, tool_name, arguments, None).await
+    async fn forward_tool_call(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        arguments: Value,
+    ) -> anyhow::Result<Value> {
+        self.forward_tool_call_with_context(server_name, tool_name, arguments, None)
+            .await
     }
 
     /// Stop a server connection
@@ -575,7 +665,10 @@ impl UserConfig {
             println!("📂 Loaded user config from: {}", config_file.display());
             Ok(config)
         } else {
-            println!("📂 No user config found, creating new one at: {}", config_file.display());
+            println!(
+                "📂 No user config found, creating new one at: {}",
+                config_file.display()
+            );
             Ok(Self::new())
         }
     }
@@ -651,27 +744,37 @@ impl BridgeState {
 
     // Discover all tools from all configured servers and enable those marked as enabled in config
     /// Extract user context from request headers and working directory
-    async fn load_user_context(&self, request_headers: Option<&axum::http::HeaderMap>) -> anyhow::Result<()> {
+    async fn load_user_context(
+        &self,
+        request_headers: Option<&axum::http::HeaderMap>,
+    ) -> anyhow::Result<()> {
         // Extract working directory from X-Working-Directory header
         let working_dir = if let Some(headers) = request_headers {
             if let Some(working_dir_header) = headers.get("X-Working-Directory") {
-                let working_dir_str = working_dir_header.to_str()
+                let working_dir_str = working_dir_header
+                    .to_str()
                     .map_err(|e| anyhow::anyhow!("Invalid working directory header: {}", e))?;
                 std::path::PathBuf::from(working_dir_str)
             } else {
                 // Fallback to project directory if no header
-                self.project_dir.clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+                self.project_dir
+                    .clone()
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
             }
         } else {
             // No headers provided, use project directory
-            self.project_dir.clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+            self.project_dir
+                .clone()
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
         };
 
-        println!("🔍 DEBUG: Loading user context for working directory: {}", working_dir.display());
+        println!(
+            "🔍 DEBUG: Loading user context for working directory: {}",
+            working_dir.display()
+        );
 
         // Canonicalize the path for consistency
-        let working_dir = working_dir.canonicalize()
-            .unwrap_or(working_dir);
+        let working_dir = working_dir.canonicalize().unwrap_or(working_dir);
 
         // Store the current working directory
         {
@@ -688,7 +791,10 @@ impl BridgeState {
             *config = user_config;
         }
 
-        println!("✅ DEBUG: User context loaded successfully for: {}", working_dir.display());
+        println!(
+            "✅ DEBUG: User context loaded successfully for: {}",
+            working_dir.display()
+        );
         Ok(())
     }
 
@@ -696,9 +802,11 @@ impl BridgeState {
     async fn get_context_id(&self) -> String {
         let context_manager = self.context_manager.read().await;
         if let Some(context) = context_manager.get_context() {
-            format!("{}:{}",
-                    context.project_path,
-                    context.user_id.as_deref().unwrap_or("default"))
+            format!(
+                "{}:{}",
+                context.project_path,
+                context.user_id.as_deref().unwrap_or("default")
+            )
         } else {
             "unknown".to_string()
         }
@@ -713,21 +821,34 @@ impl BridgeState {
         let servers = config_manager.get_servers();
         let mut available_tools = self.available_tools.write().await;
 
-        println!("🔍 Discovering tools from {} configured servers...", servers.len());
+        println!(
+            "🔍 Discovering tools from {} configured servers...",
+            servers.len()
+        );
 
         for (server_name, config) in servers.iter() {
             match self.discover_server_tools(server_name, config).await {
                 Ok(tools) => {
-                    println!("✅ Discovered {} tools from server '{}'", tools.len(), server_name);
+                    println!(
+                        "✅ Discovered {} tools from server '{}'",
+                        tools.len(),
+                        server_name
+                    );
 
                     for tool in tools {
                         // Add to available tools (system-level registry)
                         available_tools.insert(tool.name.clone(), tool.clone());
-                        println!("📋 Registered tool '{}' from server '{}' (system-level)", tool.name, server_name);
+                        println!(
+                            "📋 Registered tool '{}' from server '{}' (system-level)",
+                            tool.name, server_name
+                        );
                     }
                 }
                 Err(e) => {
-                    println!("⚠️  Failed to discover tools from server '{}': {}", server_name, e);
+                    println!(
+                        "⚠️  Failed to discover tools from server '{}': {}",
+                        server_name, e
+                    );
                     // Continue with other servers - don't fail completely
                 }
             }
@@ -738,11 +859,16 @@ impl BridgeState {
         println!("💡 User contexts will determine which tools are visible per project.");
 
         // DEBUG: Show tool discovery summary
-        println!("🔍 DEBUG: Available tools summary: {} tools discovered", available_tools.len());
+        println!(
+            "🔍 DEBUG: Available tools summary: {} tools discovered",
+            available_tools.len()
+        );
 
         // Note: available_tools now contains all discovered tools (system-level registry)
         // Tool enabling is now done per-request based on user context
-        println!("🧹 System-level tool registry complete - using context-based filtering for visibility");
+        println!(
+            "🧹 System-level tool registry complete - using context-based filtering for visibility"
+        );
 
         Ok(())
     }
@@ -755,7 +881,9 @@ impl BridgeState {
     async fn should_tool_be_enabled(&self, server_name: &str, tool_name: &str) -> bool {
         // Check context preference first (this is the primary mechanism now)
         let context_manager = self.context_manager.read().await;
-        if let Some(context_preference) = context_manager.should_tool_be_enabled(server_name, tool_name) {
+        if let Some(context_preference) =
+            context_manager.should_tool_be_enabled(server_name, tool_name)
+        {
             return context_preference;
         }
         drop(context_manager);
@@ -767,33 +895,59 @@ impl BridgeState {
     }
 
     // Discover tools from a single server (without "starting" it permanently)
-    async fn discover_server_tools(&self, server_name: &str, config: &ServerConfig) -> anyhow::Result<Vec<Tool>> {
-        use tokio::process::Command;
-        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    async fn discover_server_tools(
+        &self,
+        server_name: &str,
+        config: &ServerConfig,
+    ) -> anyhow::Result<Vec<Tool>> {
         use std::process::Stdio;
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::process::Command;
 
         let start_time = std::time::Instant::now();
-        println!("🔍 [{}] Starting tool discovery at {:?}", server_name, chrono::Utc::now().format("%H:%M:%S"));
-        println!("🔍 [{}] Command: {} {}", server_name, config.command, config.args.join(" "));
-        println!("🔍 [{}] Environment variables: {:?}", server_name, config.env);
-        
+        println!(
+            "🔍 [{}] Starting tool discovery at {:?}",
+            server_name,
+            chrono::Utc::now().format("%H:%M:%S")
+        );
+        println!(
+            "🔍 [{}] Command: {} {}",
+            server_name,
+            config.command,
+            config.args.join(" ")
+        );
+        println!(
+            "🔍 [{}] Environment variables: {:?}",
+            server_name, config.env
+        );
+
         // Debug: Check if command exists
         let command_check = std::process::Command::new("which")
             .arg(&config.command)
             .output();
-        
+
         match command_check {
             Ok(output) => {
                 if output.status.success() {
                     let path = String::from_utf8_lossy(&output.stdout);
                     println!("🔍 [{}] Command found at: {}", server_name, path.trim());
                 } else {
-                    println!("⚠️ [{}] Command '{}' not found in PATH", server_name, config.command);
-                    println!("⚠️ [{}] Current PATH: {}", server_name, std::env::var("PATH").unwrap_or_default());
+                    println!(
+                        "⚠️ [{}] Command '{}' not found in PATH",
+                        server_name, config.command
+                    );
+                    println!(
+                        "⚠️ [{}] Current PATH: {}",
+                        server_name,
+                        std::env::var("PATH").unwrap_or_default()
+                    );
                 }
             }
             Err(e) => {
-                println!("⚠️ [{}] Failed to check command existence: {}", server_name, e);
+                println!(
+                    "⚠️ [{}] Failed to check command existence: {}",
+                    server_name, e
+                );
             }
         }
 
@@ -806,14 +960,21 @@ impl BridgeState {
 
         // Set working directory (default to project directory if not specified)
         let config_manager = self.system_config_manager.read().await;
-        let project_dir = config_manager.get_config_path().parent()
+        let project_dir = config_manager
+            .get_config_path()
+            .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
-        let working_dir = config.working_directory
+        let working_dir = config
+            .working_directory
             .as_ref()
             .map(|wd| resolve_working_directory(wd, project_dir))
             .unwrap_or_else(|| project_dir.to_path_buf());
         cmd.current_dir(&working_dir);
-        println!("🔍 [{}] Setting working directory: {}", server_name, working_dir.display());
+        println!(
+            "🔍 [{}] Setting working directory: {}",
+            server_name,
+            working_dir.display()
+        );
 
         // Inherit all environment variables from parent process
         cmd.envs(std::env::vars());
@@ -830,40 +991,78 @@ impl BridgeState {
             "memory" => {
                 // Memory server needs MEMORY_FILE_PATH set to project directory
                 let memory_file = working_dir.join("memory.json");
-                cmd.env("MEMORY_FILE_PATH", memory_file.to_string_lossy().to_string());
-                println!("🧠 [{}] Setting MEMORY_FILE_PATH: {}", server_name, memory_file.display());
+                cmd.env(
+                    "MEMORY_FILE_PATH",
+                    memory_file.to_string_lossy().to_string(),
+                );
+                println!(
+                    "🧠 [{}] Setting MEMORY_FILE_PATH: {}",
+                    server_name,
+                    memory_file.display()
+                );
             }
             "docs-manager" | "mcp-docs-service" => {
                 // MCP Docs service - set default docs directory
                 let docs_dir = working_dir.join("docs");
                 cmd.env("MCP_DOCS_ROOT", docs_dir.to_string_lossy().to_string());
-                println!("📚 [{}] Setting MCP_DOCS_ROOT: {}", server_name, docs_dir.display());
+                println!(
+                    "📚 [{}] Setting MCP_DOCS_ROOT: {}",
+                    server_name,
+                    docs_dir.display()
+                );
                 // TODO: Modify command args to include docs path as well
             }
             "filesystem" => {
                 // Filesystem server - set allowed directory
-                cmd.env("ALLOWED_DIRECTORY", working_dir.to_string_lossy().to_string());
-                println!("📁 [{}] Setting ALLOWED_DIRECTORY: {}", server_name, working_dir.display());
+                cmd.env(
+                    "ALLOWED_DIRECTORY",
+                    working_dir.to_string_lossy().to_string(),
+                );
+                println!(
+                    "📁 [{}] Setting ALLOWED_DIRECTORY: {}",
+                    server_name,
+                    working_dir.display()
+                );
             }
             name if name.contains("file") || name.contains("docs") || name.contains("storage") => {
                 // Generic file-related servers - set working directory env var
-                cmd.env("WORKING_DIRECTORY", working_dir.to_string_lossy().to_string());
+                cmd.env(
+                    "WORKING_DIRECTORY",
+                    working_dir.to_string_lossy().to_string(),
+                );
                 cmd.env("PROJECT_DIR", working_dir.to_string_lossy().to_string());
-                println!("📂 [{}] Setting PROJECT_DIR and WORKING_DIRECTORY: {}", server_name, working_dir.display());
+                println!(
+                    "📂 [{}] Setting PROJECT_DIR and WORKING_DIRECTORY: {}",
+                    server_name,
+                    working_dir.display()
+                );
             }
             _ => {
                 // No special handling needed for this server
             }
         }
 
-        println!("🔍 [{}] Spawning process... (elapsed: {:?})", server_name, start_time.elapsed());
+        println!(
+            "🔍 [{}] Spawning process... (elapsed: {:?})",
+            server_name,
+            start_time.elapsed()
+        );
         let mut process = match cmd.spawn() {
             Ok(p) => {
-                println!("✅ [{}] Process spawned successfully (elapsed: {:?})", server_name, start_time.elapsed());
+                println!(
+                    "✅ [{}] Process spawned successfully (elapsed: {:?})",
+                    server_name,
+                    start_time.elapsed()
+                );
                 p
             }
             Err(e) => {
-                println!("❌ [{}] Failed to spawn process: {} (elapsed: {:?})", server_name, e, start_time.elapsed());
+                println!(
+                    "❌ [{}] Failed to spawn process: {} (elapsed: {:?})",
+                    server_name,
+                    e,
+                    start_time.elapsed()
+                );
                 return Err(e.into());
             }
         };
@@ -911,10 +1110,20 @@ impl BridgeState {
         });
 
         let init_msg = format!("{}\n", serde_json::to_string(&init_request)?);
-        println!("🔍 [{}] Sending init request (elapsed: {:?}): {}", server_name, start_time.elapsed(), init_msg.trim());
+        println!(
+            "🔍 [{}] Sending init request (elapsed: {:?}): {}",
+            server_name,
+            start_time.elapsed(),
+            init_msg.trim()
+        );
 
         if let Err(e) = stdin.write_all(init_msg.as_bytes()).await {
-            println!("❌ [{}] Failed to write init request: {} (elapsed: {:?})", server_name, e, start_time.elapsed());
+            println!(
+                "❌ [{}] Failed to write init request: {} (elapsed: {:?})",
+                server_name,
+                e,
+                start_time.elapsed()
+            );
             return Err(e.into());
         }
 
@@ -922,15 +1131,22 @@ impl BridgeState {
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
 
-        println!("🔍 [{}] Reading init response... (elapsed: {:?})", server_name, start_time.elapsed());
+        println!(
+            "🔍 [{}] Reading init response... (elapsed: {:?})",
+            server_name,
+            start_time.elapsed()
+        );
 
         // Increase timeout for servers that may take longer to initialize
         let timeout_secs = match server_name {
-            "git" | "github" => 30,  // Git and GitHub servers may take longer
-            "docs-service" | "task-master-ai" => 20,  // Document scanning servers need more time
-            _ => 15  // Default timeout
+            "git" | "github" => 30, // Git and GitHub servers may take longer
+            "docs-service" | "task-master-ai" => 20, // Document scanning servers need more time
+            _ => 15,                // Default timeout
         };
-        println!("🔍 [{}] Using timeout of {} seconds for initialization", server_name, timeout_secs);
+        println!(
+            "🔍 [{}] Using timeout of {} seconds for initialization",
+            server_name, timeout_secs
+        );
 
         // Some servers print status messages before JSON responses
         // Keep reading lines until we get valid JSON or EOF
@@ -939,9 +1155,19 @@ impl BridgeState {
 
         loop {
             line.clear();
-            println!("🔍 [{}] Waiting for init response line {} (elapsed: {:?})", server_name, init_attempts + 1, start_time.elapsed());
+            println!(
+                "🔍 [{}] Waiting for init response line {} (elapsed: {:?})",
+                server_name,
+                init_attempts + 1,
+                start_time.elapsed()
+            );
 
-            match tokio::time::timeout(tokio::time::Duration::from_secs(timeout_secs), reader.read_line(&mut line)).await {
+            match tokio::time::timeout(
+                tokio::time::Duration::from_secs(timeout_secs),
+                reader.read_line(&mut line),
+            )
+            .await
+            {
                 Ok(read_result) => match read_result {
                     Ok(bytes_read) => {
                         if bytes_read == 0 {
@@ -949,14 +1175,29 @@ impl BridgeState {
                             return Ok(Vec::new());
                         }
 
-                        println!("🔍 [{}] Read init line {} ({} bytes, elapsed: {:?}): {}", server_name, init_attempts + 1, bytes_read, start_time.elapsed(), line.trim());
+                        println!(
+                            "🔍 [{}] Read init line {} ({} bytes, elapsed: {:?}): {}",
+                            server_name,
+                            init_attempts + 1,
+                            bytes_read,
+                            start_time.elapsed(),
+                            line.trim()
+                        );
 
                         // Try to parse as JSON
                         if let Ok(_) = serde_json::from_str::<Value>(&line) {
-                            println!("✅ [{}] Found valid JSON init response (elapsed: {:?})", server_name, start_time.elapsed());
+                            println!(
+                                "✅ [{}] Found valid JSON init response (elapsed: {:?})",
+                                server_name,
+                                start_time.elapsed()
+                            );
                             break;
                         } else {
-                            println!("🔍 [{}] Init line is not JSON, continuing... (elapsed: {:?})", server_name, start_time.elapsed());
+                            println!(
+                                "🔍 [{}] Init line is not JSON, continuing... (elapsed: {:?})",
+                                server_name,
+                                start_time.elapsed()
+                            );
                             init_attempts += 1;
                             if init_attempts >= max_init_attempts {
                                 println!("⚠️ [{}] No JSON init response found after {} attempts, but continuing anyway... (elapsed: {:?})", server_name, max_init_attempts, start_time.elapsed());
@@ -965,12 +1206,22 @@ impl BridgeState {
                         }
                     }
                     Err(e) => {
-                        println!("❌ [{}] Failed to read init line: {} (elapsed: {:?})", server_name, e, start_time.elapsed());
+                        println!(
+                            "❌ [{}] Failed to read init line: {} (elapsed: {:?})",
+                            server_name,
+                            e,
+                            start_time.elapsed()
+                        );
                         return Err(e.into());
                     }
-                }
+                },
                 Err(_) => {
-                    println!("❌ [{}] Timeout reading init line after {} seconds (elapsed: {:?})", server_name, timeout_secs, start_time.elapsed());
+                    println!(
+                        "❌ [{}] Timeout reading init line after {} seconds (elapsed: {:?})",
+                        server_name,
+                        timeout_secs,
+                        start_time.elapsed()
+                    );
                     return Ok(Vec::new());
                 }
             }
@@ -985,17 +1236,35 @@ impl BridgeState {
         });
 
         let initialized_msg = format!("{}\n", serde_json::to_string(&initialized_notification)?);
-        println!("🔍 [{}] Sending initialized notification (elapsed: {:?}): {}", server_name, start_time.elapsed(), initialized_msg.trim());
+        println!(
+            "🔍 [{}] Sending initialized notification (elapsed: {:?}): {}",
+            server_name,
+            start_time.elapsed(),
+            initialized_msg.trim()
+        );
 
         if let Err(e) = stdin.write_all(initialized_msg.as_bytes()).await {
-            println!("❌ [{}] Failed to write initialized notification: {} (elapsed: {:?})", server_name, e, start_time.elapsed());
+            println!(
+                "❌ [{}] Failed to write initialized notification: {} (elapsed: {:?})",
+                server_name,
+                e,
+                start_time.elapsed()
+            );
             return Err(e.into());
         }
 
         // Give server time to initialize (especially important for document-scanning servers)
-        println!("🔍 [{}] Waiting for server initialization (3 seconds)... (elapsed: {:?})", server_name, start_time.elapsed());
+        println!(
+            "🔍 [{}] Waiting for server initialization (3 seconds)... (elapsed: {:?})",
+            server_name,
+            start_time.elapsed()
+        );
         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-        println!("🔍 [{}] Server initialization wait complete (elapsed: {:?})", server_name, start_time.elapsed());
+        println!(
+            "🔍 [{}] Server initialization wait complete (elapsed: {:?})",
+            server_name,
+            start_time.elapsed()
+        );
 
         // Get tools list
         let tools_request = json!({
@@ -1006,16 +1275,30 @@ impl BridgeState {
         });
 
         let tools_msg = format!("{}\n", serde_json::to_string(&tools_request)?);
-        println!("🔍 [{}] Sending tools/list request (elapsed: {:?}): {}", server_name, start_time.elapsed(), tools_msg.trim());
+        println!(
+            "🔍 [{}] Sending tools/list request (elapsed: {:?}): {}",
+            server_name,
+            start_time.elapsed(),
+            tools_msg.trim()
+        );
 
         if let Err(e) = stdin.write_all(tools_msg.as_bytes()).await {
-            println!("❌ [{}] Failed to write tools request: {} (elapsed: {:?})", server_name, e, start_time.elapsed());
+            println!(
+                "❌ [{}] Failed to write tools request: {} (elapsed: {:?})",
+                server_name,
+                e,
+                start_time.elapsed()
+            );
             return Err(e.into());
         }
 
         // Read tools response (may also have status messages before JSON)
         line.clear();
-        println!("🔍 [{}] Reading tools response... (elapsed: {:?})", server_name, start_time.elapsed());
+        println!(
+            "🔍 [{}] Reading tools response... (elapsed: {:?})",
+            server_name,
+            start_time.elapsed()
+        );
 
         // Keep reading lines until we get valid JSON or EOF
         let mut tools_attempts = 0;
@@ -1023,9 +1306,19 @@ impl BridgeState {
 
         loop {
             line.clear();
-            println!("🔍 [{}] Waiting for tools response line {} (elapsed: {:?})", server_name, tools_attempts + 1, start_time.elapsed());
+            println!(
+                "🔍 [{}] Waiting for tools response line {} (elapsed: {:?})",
+                server_name,
+                tools_attempts + 1,
+                start_time.elapsed()
+            );
 
-            match tokio::time::timeout(tokio::time::Duration::from_secs(timeout_secs), reader.read_line(&mut line)).await {
+            match tokio::time::timeout(
+                tokio::time::Duration::from_secs(timeout_secs),
+                reader.read_line(&mut line),
+            )
+            .await
+            {
                 Ok(read_result) => match read_result {
                     Ok(bytes_read) => {
                         if bytes_read == 0 {
@@ -1033,14 +1326,29 @@ impl BridgeState {
                             return Ok(Vec::new());
                         }
 
-                        println!("🔍 [{}] Read tools line {} ({} bytes, elapsed: {:?}): {}", server_name, tools_attempts + 1, bytes_read, start_time.elapsed(), line.trim());
+                        println!(
+                            "🔍 [{}] Read tools line {} ({} bytes, elapsed: {:?}): {}",
+                            server_name,
+                            tools_attempts + 1,
+                            bytes_read,
+                            start_time.elapsed(),
+                            line.trim()
+                        );
 
                         // Try to parse as JSON
                         if let Ok(_) = serde_json::from_str::<Value>(&line) {
-                            println!("✅ [{}] Found valid JSON tools response (elapsed: {:?})", server_name, start_time.elapsed());
+                            println!(
+                                "✅ [{}] Found valid JSON tools response (elapsed: {:?})",
+                                server_name,
+                                start_time.elapsed()
+                            );
                             break;
                         } else {
-                            println!("🔍 [{}] Tools line is not JSON, continuing... (elapsed: {:?})", server_name, start_time.elapsed());
+                            println!(
+                                "🔍 [{}] Tools line is not JSON, continuing... (elapsed: {:?})",
+                                server_name,
+                                start_time.elapsed()
+                            );
                             tools_attempts += 1;
                             if tools_attempts >= max_tools_attempts {
                                 println!("❌ [{}] Too many non-JSON tools lines after {} attempts, giving up (elapsed: {:?})", server_name, max_tools_attempts, start_time.elapsed());
@@ -1049,41 +1357,74 @@ impl BridgeState {
                         }
                     }
                     Err(e) => {
-                        println!("❌ [{}] Failed to read tools line: {} (elapsed: {:?})", server_name, e, start_time.elapsed());
+                        println!(
+                            "❌ [{}] Failed to read tools line: {} (elapsed: {:?})",
+                            server_name,
+                            e,
+                            start_time.elapsed()
+                        );
                         return Err(e.into());
                     }
-                }
+                },
                 Err(_) => {
-                    println!("❌ [{}] Timeout reading tools line after {} seconds (elapsed: {:?})", server_name, timeout_secs, start_time.elapsed());
+                    println!(
+                        "❌ [{}] Timeout reading tools line after {} seconds (elapsed: {:?})",
+                        server_name,
+                        timeout_secs,
+                        start_time.elapsed()
+                    );
                     return Ok(Vec::new());
                 }
             }
         }
 
         let tools = if let Ok(response) = serde_json::from_str::<Value>(&line) {
-            println!("🔍 [{}] Parsed tools response JSON successfully", server_name);
+            println!(
+                "🔍 [{}] Parsed tools response JSON successfully",
+                server_name
+            );
             if let Some(result) = response.get("result") {
                 println!("🔍 [{}] Found 'result' field in response", server_name);
                 if let Some(tools_array) = result.get("tools").and_then(|t| t.as_array()) {
-                    println!("🔍 [{}] Found 'tools' array with {} items", server_name, tools_array.len());
-                    let parsed_tools: Vec<Tool> = tools_array.iter().filter_map(|tool| {
-                        if let (Some(name), Some(description)) = (
-                            tool.get("name").and_then(|n| n.as_str()),
-                            tool.get("description").and_then(|d| d.as_str())
-                        ) {
-                            println!("🔍 [{}] Found tool: {} - {}", server_name, name, description);
-                            Some(Tool {
-                                name: name.to_string(),
-                                description: description.to_string(),
-                                input_schema: tool.get("inputSchema").cloned().unwrap_or(json!({})),
-                                server_name: server_name.to_string(),
-                            })
-                        } else {
-                            println!("❌ [{}] Skipping malformed tool: {:?}", server_name, tool);
-                            None
-                        }
-                    }).collect();
-                    println!("🔍 [{}] Successfully parsed {} tools", server_name, parsed_tools.len());
+                    println!(
+                        "🔍 [{}] Found 'tools' array with {} items",
+                        server_name,
+                        tools_array.len()
+                    );
+                    let parsed_tools: Vec<Tool> = tools_array
+                        .iter()
+                        .filter_map(|tool| {
+                            if let (Some(name), Some(description)) = (
+                                tool.get("name").and_then(|n| n.as_str()),
+                                tool.get("description").and_then(|d| d.as_str()),
+                            ) {
+                                println!(
+                                    "🔍 [{}] Found tool: {} - {}",
+                                    server_name, name, description
+                                );
+                                Some(Tool {
+                                    name: name.to_string(),
+                                    description: description.to_string(),
+                                    input_schema: tool
+                                        .get("inputSchema")
+                                        .cloned()
+                                        .unwrap_or(json!({})),
+                                    server_name: server_name.to_string(),
+                                })
+                            } else {
+                                println!(
+                                    "❌ [{}] Skipping malformed tool: {:?}",
+                                    server_name, tool
+                                );
+                                None
+                            }
+                        })
+                        .collect();
+                    println!(
+                        "🔍 [{}] Successfully parsed {} tools",
+                        server_name,
+                        parsed_tools.len()
+                    );
                     parsed_tools
                 } else {
                     println!("❌ [{}] No 'tools' array found in result", server_name);
@@ -1096,7 +1437,10 @@ impl BridgeState {
                 Vec::new()
             }
         } else {
-            println!("❌ [{}] Failed to parse tools response as JSON", server_name);
+            println!(
+                "❌ [{}] Failed to parse tools response as JSON",
+                server_name
+            );
             println!("🔍 [{}] Raw response: {}", server_name, line);
             Vec::new()
         };
@@ -1105,32 +1449,41 @@ impl BridgeState {
         println!("🔍 [{}] Killing discovery process", server_name);
         let _ = process.kill().await;
 
-        println!("🔍 [{}] Tool discovery complete. Found {} tools", server_name, tools.len());
+        println!(
+            "🔍 [{}] Tool discovery complete. Found {} tools",
+            server_name,
+            tools.len()
+        );
         Ok(tools)
     }
 
-    async fn handle_jsonrpc_request(&self, request: JsonRpcRequest, headers: Option<&axum::http::HeaderMap>) -> JsonRpcResponse {
-        println!("🔍 DEBUG: handle_jsonrpc_request called with method: {}", request.method);
+    async fn handle_jsonrpc_request(
+        &self,
+        request: JsonRpcRequest,
+        headers: Option<&axum::http::HeaderMap>,
+    ) -> JsonRpcResponse {
+        println!(
+            "🔍 DEBUG: handle_jsonrpc_request called with method: {}",
+            request.method
+        );
         match request.method.as_str() {
-            "initialize" => {
-                JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: request.id,
-                    result: Some(json!({
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": {
-                                "listChanged": true
-                            }
-                        },
-                        "serverInfo": {
-                            "name": "toolman",
-                            "version": "1.0.0"
+            "initialize" => JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: request.id,
+                result: Some(json!({
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {
+                            "listChanged": true
                         }
-                    })),
-                    error: None,
-                }
-            }
+                    },
+                    "serverInfo": {
+                        "name": "toolman",
+                        "version": "1.0.0"
+                    }
+                })),
+                error: None,
+            },
             "tools/list" => {
                 println!("🔍 DEBUG: tools/list handler called");
                 // Load context based on request headers (for multi-project support)
@@ -1215,11 +1568,14 @@ impl BridgeState {
                     }),
                 ];
 
-                                // Add context-filtered tools with server name prefixes
+                // Add context-filtered tools with server name prefixes
                 let available_tools = self.available_tools.read().await;
                 let user_config = self.user_config.read().await;
 
-                println!("🔍 DEBUG: Starting tool filtering with {} available tools", available_tools.len());
+                println!(
+                    "🔍 DEBUG: Starting tool filtering with {} available tools",
+                    available_tools.len()
+                );
 
                 for (_, tool) in available_tools.iter() {
                     // Create the prefixed tool name as it appears to users
@@ -1228,20 +1584,32 @@ impl BridgeState {
                     // Check if this tool should be enabled based on user config ONLY
                     // No fallback to old ContextManager system - default to false for security
                     let user_preference = user_config.is_tool_enabled(&prefixed_tool_name);
-                    println!("🔍 DEBUG: Tool {} - User preference: {:?}", prefixed_tool_name, user_preference);
+                    println!(
+                        "🔍 DEBUG: Tool {} - User preference: {:?}",
+                        prefixed_tool_name, user_preference
+                    );
 
                     let should_enable = if let Some(user_preference) = user_preference {
                         // User has explicit preference - use it
-                        println!("🔍 DEBUG: Using user preference for {}: {}", prefixed_tool_name, user_preference);
+                        println!(
+                            "🔍 DEBUG: Using user preference for {}: {}",
+                            prefixed_tool_name, user_preference
+                        );
                         user_preference
                     } else {
                         // No user preference - DEFAULT TO FALSE (secure by default)
                         // This eliminates the old ContextManager fallback that caused cross-contamination
-                        println!("🔍 DEBUG: No user preference for {} - defaulting to FALSE", prefixed_tool_name);
+                        println!(
+                            "🔍 DEBUG: No user preference for {} - defaulting to FALSE",
+                            prefixed_tool_name
+                        );
                         false
                     };
 
-                    println!("🔍 DEBUG: Final decision for {}: {}", prefixed_tool_name, should_enable);
+                    println!(
+                        "🔍 DEBUG: Final decision for {}: {}",
+                        prefixed_tool_name, should_enable
+                    );
 
                     if should_enable {
                         all_tools.push(json!({
@@ -1267,7 +1635,7 @@ impl BridgeState {
                                 if let Some(args) = params.get("arguments") {
                                     if let (Some(server_name), Some(tool_name)) = (
                                         args.get("server_name").and_then(|v| v.as_str()),
-                                        args.get("tool_name").and_then(|v| v.as_str())
+                                        args.get("tool_name").and_then(|v| v.as_str()),
                                     ) {
                                         self.enable_tool(server_name, tool_name, headers).await
                                     } else {
@@ -1291,7 +1659,7 @@ impl BridgeState {
                                 if let Some(args) = params.get("arguments") {
                                     if let (Some(server_name), Some(tool_name)) = (
                                         args.get("server_name").and_then(|v| v.as_str()),
-                                        args.get("tool_name").and_then(|v| v.as_str())
+                                        args.get("tool_name").and_then(|v| v.as_str()),
                                     ) {
                                         self.disable_tool(server_name, tool_name, headers).await
                                     } else {
@@ -1313,7 +1681,9 @@ impl BridgeState {
                             }
                             "save_config" => {
                                 let restart_proxy = if let Some(args) = params.get("arguments") {
-                                    args.get("restart_proxy").and_then(|v| v.as_bool()).unwrap_or(true)
+                                    args.get("restart_proxy")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(true)
                                 } else {
                                     true
                                 };
@@ -1321,12 +1691,14 @@ impl BridgeState {
                             }
                             "suggest_tools_for_tasks" => {
                                 if let Some(args) = params.get("arguments") {
-                                    let tasks = args.get("tasks")
-                                        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: tasks"));
+                                    let tasks = args.get("tasks").ok_or_else(|| {
+                                        anyhow::anyhow!("Missing required parameter: tasks")
+                                    });
 
                                     match tasks {
                                         Ok(tasks) => {
-                                            let auto_enable = args.get("auto_enable")
+                                            let auto_enable = args
+                                                .get("auto_enable")
                                                 .and_then(|v| v.as_bool())
                                                 .unwrap_or(false);
 
@@ -1340,19 +1712,33 @@ impl BridgeState {
                                                     let mut enabled_tools = Vec::new();
                                                     if auto_enable {
                                                         for analysis in &analyses {
-                                                            for suggestion in &analysis.suggested_tools {
+                                                            for suggestion in
+                                                                &analysis.suggested_tools
+                                                            {
                                                                 if suggestion.confidence > 0.8 {
                                                                     // Try to enable the tool
-                                                                    let enable_result = self.enable_tool(
-                                                                        &suggestion.server_name,
-                                                                        &suggestion.tool_name,
-                                                                        headers
-                                                                    ).await;
+                                                                    let enable_result = self
+                                                                        .enable_tool(
+                                                                            &suggestion.server_name,
+                                                                            &suggestion.tool_name,
+                                                                            headers,
+                                                                        )
+                                                                        .await;
 
                                                                     // Check if enable was successful
-                                                                    if let Some(content) = enable_result.get("content") {
-                                                                        if let Some(text_obj) = content.get(0) {
-                                                                            if let Some(text) = text_obj.get("text").and_then(|t| t.as_str()) {
+                                                                    if let Some(content) =
+                                                                        enable_result.get("content")
+                                                                    {
+                                                                        if let Some(text_obj) =
+                                                                            content.get(0)
+                                                                        {
+                                                                            if let Some(text) =
+                                                                                text_obj
+                                                                                    .get("text")
+                                                                                    .and_then(|t| {
+                                                                                        t.as_str()
+                                                                                    })
+                                                                            {
                                                                                 if text.contains("✅ Enabled tool") {
                                                                                     enabled_tools.push(format!(
                                                                                         "{}_{}",
@@ -1426,22 +1812,30 @@ impl BridgeState {
                             _ => {
                                 // Parse prefixed tool name and forward to server
                                 let config_manager = self.system_config_manager.read().await;
-                                let available_servers: Vec<String> = config_manager.get_servers().keys().cloned().collect();
+                                let available_servers: Vec<String> =
+                                    config_manager.get_servers().keys().cloned().collect();
                                 drop(config_manager);
 
                                 match parse_tool_name_with_servers(tool_name, &available_servers) {
                                     Ok(parsed_tool) => {
                                         // Get arguments for the tool call
-                                        let mut arguments = params.get("arguments")
-                                            .cloned()
-                                            .unwrap_or(json!({}));
+                                        let mut arguments =
+                                            params.get("arguments").cloned().unwrap_or(json!({}));
 
                                         // ✨ AUTO-INJECT parameters based on working directory
-                                        if let Some(working_dir) = self.current_working_dir.read().await.as_ref() {
+                                        if let Some(working_dir) =
+                                            self.current_working_dir.read().await.as_ref()
+                                        {
                                             if let Some(args_obj) = arguments.as_object_mut() {
                                                 // 🎯 Universal projectRoot injection (for TaskMaster, etc.)
-                                                args_obj.insert("projectRoot".to_string(), json!(working_dir.to_string_lossy()));
-                                                println!("🔧 Auto-injected projectRoot: {}", working_dir.display());
+                                                args_obj.insert(
+                                                    "projectRoot".to_string(),
+                                                    json!(working_dir.to_string_lossy()),
+                                                );
+                                                println!(
+                                                    "🔧 Auto-injected projectRoot: {}",
+                                                    working_dir.display()
+                                                );
 
                                                 // 🎯 Server-specific parameter injection
                                                 // Note: Memory server uses environment variables, not parameters
@@ -1462,12 +1856,16 @@ impl BridgeState {
                                         };
 
                                         // Forward to the appropriate server with user context
-                                        match self.connection_pool.forward_tool_call_with_context(
-                                            &parsed_tool.server_name,
-                                            &parsed_tool.tool_name,
-                                            arguments,
-                                            user_working_dir.as_deref()
-                                        ).await {
+                                        match self
+                                            .connection_pool
+                                            .forward_tool_call_with_context(
+                                                &parsed_tool.server_name,
+                                                &parsed_tool.tool_name,
+                                                arguments,
+                                                user_working_dir.as_deref(),
+                                            )
+                                            .await
+                                        {
                                             Ok(response) => {
                                                 // Extract result from response or return the response directly
                                                 if let Some(result) = response.get("result") {
@@ -1476,7 +1874,7 @@ impl BridgeState {
                                                     response
                                                 }
                                             }
-                                                                                        Err(e) => {
+                                            Err(e) => {
                                                 json!({
                                                     "content": [{
                                                         "type": "text",
@@ -1492,7 +1890,7 @@ impl BridgeState {
                                             }
                                         }
                                     }
-                                                                        Err(e) => {
+                                    Err(e) => {
                                         json!({
                                             "content": [{
                                                 "type": "text",
@@ -1536,21 +1934,24 @@ impl BridgeState {
                     }
                 }
             }
-            _ => {
-                JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: request.id,
-                    result: None,
-                    error: Some(JsonRpcError {
-                        code: -32601,
-                        message: "Method not found".to_string(),
-                    }),
-                }
-            }
+            _ => JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: request.id,
+                result: None,
+                error: Some(JsonRpcError {
+                    code: -32601,
+                    message: "Method not found".to_string(),
+                }),
+            },
         }
     }
 
-    async fn enable_tool(&self, server_name: &str, tool_name: &str, headers: Option<&axum::http::HeaderMap>) -> Value {
+    async fn enable_tool(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        headers: Option<&axum::http::HeaderMap>,
+    ) -> Value {
         // Load current user context
         if let Err(e) = self.load_user_context(headers).await {
             return json!({
@@ -1603,7 +2004,12 @@ impl BridgeState {
         }
     }
 
-    async fn disable_tool(&self, server_name: &str, tool_name: &str, headers: Option<&axum::http::HeaderMap>) -> Value {
+    async fn disable_tool(
+        &self,
+        server_name: &str,
+        tool_name: &str,
+        headers: Option<&axum::http::HeaderMap>,
+    ) -> Value {
         // Load current user context
         if let Err(e) = self.load_user_context(headers).await {
             return json!({
@@ -1664,7 +2070,8 @@ impl BridgeState {
         let mut server_info = Vec::new();
 
         for (server_name, config) in servers.iter() {
-            let server_tools: Vec<_> = available_tools.values()
+            let server_tools: Vec<_> = available_tools
+                .values()
                 .filter(|tool| tool.server_name == *server_name)
                 .map(|tool| {
                     let mut tool_info = json!({
@@ -1720,7 +2127,7 @@ impl BridgeState {
                     "type": "text",
                     "text": format!("❌ Failed to save config: {}", e)
                 }]
-            })
+            }),
         }
     }
 
@@ -1731,7 +2138,9 @@ impl BridgeState {
             wd.clone()
         };
 
-        let working_dir = working_dir.ok_or_else(|| anyhow::anyhow!("No working directory available for saving user config"))?;
+        let working_dir = working_dir.ok_or_else(|| {
+            anyhow::anyhow!("No working directory available for saving user config")
+        })?;
 
         // Save current user config to project directory
         {
@@ -1744,7 +2153,11 @@ impl BridgeState {
         // Count enabled tools
         let enabled_count = {
             let user_config = self.user_config.read().await;
-            user_config.enabled_tools.values().filter(|&&enabled| enabled).count()
+            user_config
+                .enabled_tools
+                .values()
+                .filter(|&&enabled| enabled)
+                .count()
         };
 
         let message = format!(
@@ -1816,11 +2229,18 @@ async fn main() -> Result<()> {
             println!("🔍 Discovering tools from server: {}", server_name);
             match state.discover_server_tools(server_name, config).await {
                 Ok(tools) => {
-                    println!("✅ Discovered {} tools from server '{}'", tools.len(), server_name);
+                    println!(
+                        "✅ Discovered {} tools from server '{}'",
+                        tools.len(),
+                        server_name
+                    );
                     all_discovered_tools.insert(server_name.clone(), tools);
                 }
                 Err(e) => {
-                    println!("❌ Failed to discover tools from server '{}': {}", server_name, e);
+                    println!(
+                        "❌ Failed to discover tools from server '{}': {}",
+                        server_name, e
+                    );
                     all_discovered_tools.insert(server_name.clone(), Vec::new());
                 }
             }
@@ -1853,26 +2273,32 @@ async fn main() -> Result<()> {
         // Write to file
         std::fs::write(&export_path, serde_json::to_string_pretty(&export_data)?)?;
 
-        println!("✅ Exported {} tools from {} servers to: {}",
-                 export_data["total_tools_discovered"],
-                 export_data["total_servers"],
-                 export_path.display());
+        println!(
+            "✅ Exported {} tools from {} servers to: {}",
+            export_data["total_tools_discovered"],
+            export_data["total_servers"],
+            export_path.display()
+        );
 
         return Ok(());
     }
 
     println!("🚀 Starting MCP Tools HTTP Server on port {}", args.port);
 
-        // Print ALL environment variables for debugging
+    // Print ALL environment variables for debugging
     println!("🔍 ALL Environment Variables Available:");
     let mut env_vars: Vec<_> = std::env::vars().collect();
     env_vars.sort_by(|a, b| a.0.cmp(&b.0));
 
     for (key, value) in env_vars {
         // Mask potentially sensitive values but show everything
-        let masked_value = if key.contains("API_KEY") || key.contains("TOKEN") || key.contains("PASSWORD") || key.contains("SECRET") {
+        let masked_value = if key.contains("API_KEY")
+            || key.contains("TOKEN")
+            || key.contains("PASSWORD")
+            || key.contains("SECRET")
+        {
             if value.len() > 8 {
-                format!("{}...{}", &value[..4], &value[value.len()-4..])
+                format!("{}...{}", &value[..4], &value[value.len() - 4..])
             } else {
                 "***".to_string()
             }
@@ -1912,31 +2338,43 @@ mod tests {
     fn test_parse_tool_name_valid() {
         // Simple case
         let result = parse_tool_name("memory_delete_entities").unwrap();
-        assert_eq!(result, ParsedTool {
-            server_name: "memory".to_string(),
-            tool_name: "delete_entities".to_string(),
-        });
+        assert_eq!(
+            result,
+            ParsedTool {
+                server_name: "memory".to_string(),
+                tool_name: "delete_entities".to_string(),
+            }
+        );
 
         // Single underscore in tool name
         let result = parse_tool_name("filesystem_read_file").unwrap();
-        assert_eq!(result, ParsedTool {
-            server_name: "filesystem".to_string(),
-            tool_name: "read_file".to_string(),
-        });
+        assert_eq!(
+            result,
+            ParsedTool {
+                server_name: "filesystem".to_string(),
+                tool_name: "read_file".to_string(),
+            }
+        );
 
         // Multiple underscores in tool name - should split at first underscore only
         let result = parse_tool_name("memory_delete_all_entities").unwrap();
-        assert_eq!(result, ParsedTool {
-            server_name: "memory".to_string(),
-            tool_name: "delete_all_entities".to_string(),
-        });
+        assert_eq!(
+            result,
+            ParsedTool {
+                server_name: "memory".to_string(),
+                tool_name: "delete_all_entities".to_string(),
+            }
+        );
 
         // Numbers and hyphens
         let result = parse_tool_name("server123_tool-name").unwrap();
-        assert_eq!(result, ParsedTool {
-            server_name: "server123".to_string(),
-            tool_name: "tool-name".to_string(),
-        });
+        assert_eq!(
+            result,
+            ParsedTool {
+                server_name: "server123".to_string(),
+                tool_name: "tool-name".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -1976,19 +2414,25 @@ mod tests {
     fn test_parse_tool_name_edge_cases() {
         // Multiple consecutive underscores
         let result = parse_tool_name("server__tool").unwrap();
-        assert_eq!(result, ParsedTool {
-            server_name: "server".to_string(),
-            tool_name: "_tool".to_string(),
-        });
+        assert_eq!(
+            result,
+            ParsedTool {
+                server_name: "server".to_string(),
+                tool_name: "_tool".to_string(),
+            }
+        );
 
         // Very long names
         let long_server = "a".repeat(100);
         let long_tool = "b".repeat(100);
         let long_name = format!("{}_{}", long_server, long_tool);
         let result = parse_tool_name(&long_name).unwrap();
-        assert_eq!(result, ParsedTool {
-            server_name: long_server,
-            tool_name: long_tool,
-        });
+        assert_eq!(
+            result,
+            ParsedTool {
+                server_name: long_server,
+                tool_name: long_tool,
+            }
+        );
     }
 }
