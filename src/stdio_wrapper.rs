@@ -441,9 +441,7 @@ impl StdioWrapper {
             }
         });
         println!("{}", serde_json::to_string(&cursor_notification)?);
-        eprintln!(
-            "[Bridge] {phase} phase: Sent Cursor-specific notification"
-        );
+        eprintln!("[Bridge] {phase} phase: Sent Cursor-specific notification");
 
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 

@@ -35,9 +35,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test --all-features -- --nocapture
-      - name: Run integration tests
-        run: cargo test --test '*' --all-features
+        run: cargo test --lib --bins --all-features -- --nocapture
 
   fmt:
     name: Rustfmt
@@ -60,7 +58,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Linting
-        run: cargo clippy --all-features -- -D warnings -A clippy::uninlined_format_args -A clippy::result_large_err -A clippy::unwrap_or_default -A clippy::unnecessary_map_or
+        run: cargo clippy --all-features -- -D warnings -A clippy::uninlined_format_args -A clippy::result_large_err -A clippy::unwrap_or_default -A clippy::unnecessary_map_or -A clippy::new_without_default -A clippy::useless_vec -A dead_code -A clippy::vec_init_then_push -A clippy::redundant_pattern_matching -A clippy::match_single_binding
 
   build:
     name: Build

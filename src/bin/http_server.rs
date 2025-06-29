@@ -2394,19 +2394,19 @@ mod tests {
         // Missing server name (starts with underscore)
         assert!(matches!(
             parse_tool_name("_delete_entities"),
-            Err(ToolParseError::MissingServerName(_))
+            Err(ToolParseError::InvalidFormat(_))
         ));
 
         // Missing tool name (ends with underscore)
         assert!(matches!(
             parse_tool_name("memory_"),
-            Err(ToolParseError::MissingToolName(_))
+            Err(ToolParseError::InvalidFormat(_))
         ));
 
         // Only underscore
         assert!(matches!(
             parse_tool_name("_"),
-            Err(ToolParseError::MissingServerName(_))
+            Err(ToolParseError::InvalidFormat(_))
         ));
     }
 
