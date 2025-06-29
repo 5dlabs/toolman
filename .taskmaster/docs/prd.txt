@@ -1,0 +1,301 @@
+# MCP Bridge Proxy - Product Requirements Document (Updated)
+
+## Overview
+
+The MCP Bridge Proxy is a Rust-based HTTP server that provides intelligent MCP server and tool management for Cursor IDE and Claude Code. Instead of overwhelming users with all available tools from every server, it provides selective tool exposure with dynamic management capabilities.
+
+**Core Problem**: Developers using Cursor IDE and Claude Code face tool overwhelm when working with multiple MCP servers, lack dynamic tool management, and struggle with complex server setup processes. Current solutions require manual configuration, server restarts for changes, and provide no intelligent server discovery.
+
+**Solution**: A proxy server that filters tools based on user needs, enables runtime tool management without restarts, automatically detects and configures servers from GitHub repositories, and supports clear tool identification through prefixing.
+
+**Value Proposition**: Developers can focus on their specific workflow needs by seeing only relevant tools with clear server identification, experiment safely with ephemeral changes, and add new servers through AI-driven GitHub URL analysis.
+
+## 🚨 **CRITICAL: Current State Assessment Required**
+
+⚠️ **FIRST STEP**: We need to verify what's actually working in the current codebase before proceeding. **DO NOT ASSUME ANYTHING WORKS** until verified.
+
+### Phase 0: Verification & Assessment (IMMEDIATE PRIORITY)
+
+**Scope**: Understand exactly what works and what doesn't in the current codebase
+
+**Critical Verification Tests**:
+1. **Basic Build & Server Test**: Does it build and start without errors?
+2. **Tool Exposure Test**: What tools actually appear in Cursor/Claude Code?
+3. **Tool Filtering Test**: Do only enabled:true tools appear?
+4. **Core Tool Functionality**: Do enable_tool, disable_tool, save_config exist and work?
+5. **MCP Notification Test**: Do tool changes refresh the UI?
+6. **Configuration System**: Is ephemeral state management working?
+
+### What We Know vs What We Need to Verify
+
+#### ✅ **Confirmed (File Existence)**
+- stdio_wrapper.rs exists with MCP notification code
+- HTTP server exists (src/bin/http_server.rs)
+- servers-config.json exists with tool configurations
+- Project builds (Cargo.toml is valid)
+
+#### ❓ **UNKNOWN - NEEDS VERIFICATION**
+- Tool visibility filtering (enabled:true behavior)
+- Dynamic tool management (enable_tool/disable_tool functionality)
+- MCP notifications (tool change UI refresh)
+- Configuration persistence (save_config existence/functionality)
+- Tool prefixing (server name prefixes)
+- Ephemeral configuration (runtime state management)
+
+#### ❌ **LIKELY BROKEN OR MISSING**
+- Complete MCP notification discovery (user confirmed this was lost)
+- Proven tool refresh workflow (needs re-verification)
+- Working enable_tool workflow (needs testing)
+
+## Core Features (Post-Verification)
+
+### 1. Selective Tool Filtering with Prefixes ❓ **NEEDS VERIFICATION**
+- **What it should do**: Only tools marked as `enabled: true` appear with server prefixes (e.g., `github_create_issue`)
+- **Why it's important**: Eliminates tool noise and provides clear tool identification
+- **How it should work**: Configuration-driven filtering with server name prefixes
+- **Current Status**: Unknown - needs verification
+
+### 2. Dynamic Tool Management ❓ **UNKNOWN STATUS**
+- **What it should do**: Runtime enable/disable of specific tools via `enable_tool`/`disable_tool` commands
+- **Why it's important**: Allows experimentation without editing config files or restarting servers
+- **How it should work**: Ephemeral configuration layer with MCP notifications
+- **Current Status**: Unknown - needs testing
+
+### 3. Configuration Persistence ❓ **UNKNOWN STATUS**
+- **What it should do**: `save_config` command persists ephemeral changes without proxy restart
+- **Why it's important**: Successful experiments can be made permanent for next startup
+- **How it should work**: Atomic file writing without requiring restart
+- **Current Status**: Unknown - needs verification
+
+### 4. AI-Driven Server Addition 🔄 **FRAMEWORK EXISTS**
+- **What it will do**: `add_server` command analyzes GitHub repositories using AI
+- **Why it's important**: Eliminates manual server setup complexity
+- **How it will work**: Anthropic API + comprehensive integration guide
+- **Current Status**: Framework ready (MCP_SERVER_INTEGRATION_GUIDE.md), implementation needed
+
+### 5. ~~Multi-Agent Support~~ (MOVED TO STRETCH GOAL)
+- **Status**: Removed from initial implementation due to complexity
+- **Future**: May be added after core functionality is proven
+
+## User Experience (Target State)
+
+### User Personas
+1. **Solo Developer**: Wants minimal tool noise with clear identification, easy experimentation
+2. **Team Lead**: Needs consistent configurations, safe experimentation, team coordination
+3. **Multi-Project Developer**: Requires isolated configurations per project
+
+### Key User Flows (Post-Implementation)
+
+#### Tool Discovery Flow (Target)
+1. Developer hears about useful MCP server from community
+2. AI agent calls `add_server` with GitHub repository URL
+3. System uses AI analysis + integration guide to detect setup method
+4. New tools appear in ephemeral state with server prefixes for testing
+5. Developer calls `save_config` to persist successful additions
+
+#### Dynamic Tool Management Flow (Target)
+1. Developer realizes they need a specific tool for current task
+2. AI agent calls `enable_tool` with server and tool names
+3. Tool becomes available immediately with server prefix (e.g., `filesystem_read_file`)
+4. Developer tests functionality
+5. AI agent calls `save_config` to make change permanent for next startup
+
+### UI/UX Considerations
+- **Zero-UI Design**: All interactions happen through AI agent tool calls
+- **Tool Prefixing**: Clear server identification (e.g., `github_create_issue`, `memory_store`)
+- **Safe Defaults**: Conservative approach - tools disabled unless explicitly enabled
+- **Error Recovery**: Failed operations don't break existing configurations
+
+## Technical Architecture (Target State)
+
+### System Components
+
+#### 1. Bridge Proxy Core (Rust/Axum) ❓ **EXISTS - NEEDS TESTING**
+- HTTP server handling JSON-RPC MCP protocol
+- Configuration management (persistent + ephemeral)
+- Server lifecycle management
+
+#### 2. Configuration Management ❓ **PARTIALLY EXISTS**
+- **Persistent**: servers-config.json in project root
+- **Ephemeral**: In-memory runtime changes (needs verification)
+- **Merge Logic**: Combines both for current state (needs implementation?)
+- **Tool Prefixing**: Server name prefixes for all tools (needs verification)
+
+#### 3. MCP Notification System ❓ **EXISTS - NEEDS TESTING**
+- stdio_wrapper.rs with notification implementation
+- Tool list change notifications
+- Multiple notification strategies
+- **Primary target**: Cursor IDE via stdio wrapper
+- **Secondary target**: Claude Code via direct JSON-RPC
+
+#### 4. AI-Driven Server Addition 🔄 **FRAMEWORK READY**
+- Anthropic API integration for GitHub analysis
+- Integration with MCP_SERVER_INTEGRATION_GUIDE.md patterns
+- Intelligent server type detection and configuration generation
+
+### Data Models (Target)
+
+#### Server Configuration ✅ **EXISTS**
+```json
+{
+  "name": "Display Name",
+  "description": "Server description",
+  "repo": "GitHub URL",
+  "command": "execution command",
+  "args": ["arguments"],
+  "tools": {
+    "tool_name": {"enabled": true|false}
+  }
+}
+```
+
+#### Ephemeral State ❓ **NEEDS VERIFICATION**
+```rust
+struct EphemeralConfig {
+    enabled_tools: HashMap<String, HashSet<String>>, // server -> tools
+    disabled_tools: HashMap<String, HashSet<String>>,
+}
+```
+
+### APIs and Integrations
+
+#### MCP Bridge Tools (The 4 Core Tools) ❓ **UNKNOWN STATUS**
+- `enable_tool(server_name, tool_name)` - Enable specific tool with prefix
+- `disable_tool(server_name, tool_name)` - Disable specific tool
+- `save_config()` - Persist ephemeral changes without restart
+- `add_server(repo_url)` - Add server via AI-driven GitHub analysis
+
+#### External Integrations ✅ **FRAMEWORK EXISTS**
+- **Anthropic API**: For AI-driven server analysis
+- **GitHub CLI**: Repository analysis and README downloading (integration guide ready)
+- **Environment Variables**: Shell inheritance pattern
+
+## Development Roadmap (Updated)
+
+### Phase 0: Current State Verification (IMMEDIATE) 🔄 **TODAY**
+**Scope**: Understand what actually works vs what's broken/missing
+
+**Action Items**:
+1. Test basic HTTP server functionality
+2. Verify tool filtering works (enabled:true)
+3. Test existing core tools (enable_tool, disable_tool, etc.)
+4. Test MCP notification system in Cursor/Claude Code
+5. Document findings and update requirements
+6. Create accurate task list based on actual gaps
+
+**Success Criteria**: Updated documentation with confirmed working vs broken vs missing
+
+### Phase 1: Fix/Implement Core Tools (AFTER VERIFICATION)
+**Scope**: Based on verification results, fix broken or implement missing functionality
+
+**Potential Deliverables** (TBD based on verification):
+- Fix tool filtering if broken
+- Implement tool prefixing if missing
+- Fix/implement enable_tool and disable_tool
+- Implement ephemeral configuration if missing
+- Implement save_config if missing
+- Fix MCP notification integration if broken
+
+**Success Criteria**: All 4 core tools working with tool prefixes and MCP notifications
+
+### Phase 2: AI-Driven Server Addition (MEDIUM PRIORITY)
+**Scope**: Implement `add_server` using Anthropic API + existing integration guide
+
+**Deliverables**:
+- `add_server` command with GitHub URL analysis
+- Anthropic API integration for intelligent README analysis
+- Integration with comprehensive MCP_SERVER_INTEGRATION_GUIDE.md
+- Automated server type detection using AI
+
+**Success Criteria**: 80%+ successful automatic server setup from GitHub URLs
+
+### Phase 3: Multi-Agent Support (STRETCH GOAL)
+**Scope**: Support multiple AI agents with isolated credentials (future enhancement)
+
+**Deliverables**: HTTP header to environment variable mapping, per-request environment injection
+
+## Technical Implementation Notes (Current Understanding)
+
+### Environment Variable Strategy ✅ **INTENDED PATTERN**
+- **NO** environment variables in servers-config.json
+- **Shell inheritance** for all environment variables
+- **Clean configuration** with only command/args/tools
+
+### Tool Prefixing Strategy ❓ **NEEDS VERIFICATION**
+- **Intended**: All tools prefixed with server name for clarity
+- **Format**: `{server_name}_{tool_name}` (e.g., `github_create_issue`)
+- **Benefits**: Clear tool identification, no naming conflicts
+
+### Configuration Philosophy ❓ **NEEDS VERIFICATION**
+- **Intended**: Ephemeral overlay on persistent configuration
+- **No proxy restarts** required for tool changes
+- **save_config generates file** for next startup
+- **Atomic operations** with rollback protection
+
+## Risks and Mitigations
+
+### Technical Challenges
+
+#### Current State Unknown (HIGH RISK)
+- **Risk**: We don't know what actually works in the current codebase
+- **Impact**: Could waste time implementing working features or miss critical bugs
+- **Mitigation**: Comprehensive verification phase before any implementation
+- **Status**: Phase 0 addresses this directly
+
+#### Configuration Complexity (MEDIUM RISK)
+- **Risk**: Complex server configurations may fail
+- **Impact**: Some servers won't work automatically
+- **Mitigation**: Comprehensive integration guide with AI analysis
+- **Status**: Framework exists (MCP_SERVER_INTEGRATION_GUIDE.md)
+
+### MVP Definition (Post-Verification)
+**Minimum Viable Product**: Working 4 core tools with tool prefixes
+
+**Must Have** (TBD based on verification):
+- Working tool filtering (enabled:true behavior)
+- Tool prefixing for server identification
+- Working enable_tool/disable_tool with MCP notifications
+- Configuration persistence without restart (save_config)
+
+**Nice to Have**:
+- AI-driven server addition (can be manual initially)
+- Multi-agent support (stretch goal)
+
+## Verification Checklist
+
+### ✅ **Immediate Tests Required**
+- [ ] `cargo build --release` - Does it build?
+- [ ] Start HTTP server - Does it start without errors?
+- [ ] `curl` MCP endpoint - Does it respond?
+- [ ] Check Cursor/Claude Code UI - What tools actually appear?
+- [ ] Test enable_tool - Does it exist and work?
+- [ ] Test disable_tool - Does it exist and work?
+- [ ] Test tool filtering - Do only enabled:true tools appear?
+- [ ] Test MCP notifications - Do tool changes refresh UI?
+- [ ] Test tool prefixing - Are tools prefixed with server names?
+
+### 📝 **Document Findings**
+After each test, document:
+- ✅ **WORKING**: What actually works
+- ❌ **BROKEN**: What exists but doesn't work
+- ❓ **MISSING**: What doesn't exist at all
+- 🔄 **PARTIAL**: What partially works
+
+## Quality Gates (Post-Implementation)
+
+### Before Phase Completion
+- All verification tests passing
+- Core tools working with proper error handling
+- MCP notifications functioning in target environments
+- Configuration persistence working without data loss
+- Tool prefixing providing clear identification
+
+### Phase Completion Criteria
+- **Phase 0**: Complete understanding of current state with documented gaps
+- **Phase 1**: All 4 core tools working with prefixes and notifications
+- **Phase 2**: AI-driven server addition working with 80%+ success rate
+- **Phase 3**: Multi-agent support with perfect credential isolation
+
+---
+
+**REMEMBER**: We start with verification, not assumptions. Test everything, document findings, then implement based on actual gaps discovered. The goal is a focused tool that allows users to dynamically manage prefixed MCP tools - but first we need to know what actually works.

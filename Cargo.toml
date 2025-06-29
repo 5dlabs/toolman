@@ -1,0 +1,50 @@
+[package]
+name = "toolman"
+version = "1.0.0"
+edition = "2021"
+description = "Dynamic tool management for MCP (Model Context Protocol) servers - Your ultimate tool companion"
+authors = ["Toolman Contributors"]
+license = "MIT"
+repository = "https://github.com/your-username/toolman"
+homepage = "https://github.com/your-username/toolman"
+documentation = "https://github.com/your-username/toolman"
+keywords = ["mcp", "model-context-protocol", "ai", "tools", "cursor", "toolman"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "toolman"
+path = "src/lib.rs"
+
+[[bin]]
+name = "toolman"
+path = "src/main.rs"
+
+[[bin]]
+name = "toolman-http"
+path = "src/bin/http_server.rs"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.0", features = ["derive"] }
+dirs = "5.0"
+sha2 = "0.10"
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.11", features = ["json"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+regex = "1.10"
+
+# HTTP server dependencies
+axum = { version = "0.7", features = ["json"] }
+tower-http = { version = "0.6", features = ["cors"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+reqwest = { version = "0.11", features = ["json"] }
+tokio-test = "0.4"
