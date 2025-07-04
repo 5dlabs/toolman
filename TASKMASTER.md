@@ -18,8 +18,14 @@
 3. **Tool Visibility**: Enabled tools not immediately visible in tool list after enabling
 4. **Build Warnings**: Unused imports and variables need cleanup
 5. **Cursor UI Refresh**: Tools don't appear until sending another message
+6. **Client-Specific Messages**: Response messages are tailored for Cursor but shown to Claude Code users
 
 ## Architecture Overview
+
+### Startup Time
+- **Server initialization**: ~3 minutes for full discovery of all MCP servers
+- The HTTP server needs to discover and initialize connections to 26+ MCP servers
+- Wait for "Server running on port" message before using
 
 ### Key Components
 - **Stdio Wrapper** (`src/main.rs`): Handles MCP protocol communication with Cursor
@@ -38,15 +44,28 @@
 ### High Priority (Blockers)
 - [x] Fix Git server initialization timeout (was disabled - now enabled)
 - [x] Fix GitHub server initialization timeout (was disabled - now enabled)
-- [ ] Fix tool visibility after enabling (tools don't appear immediately)
+- [ ] **CRITICAL: Tool visibility issue** - Only 4/26 servers expose tools to MCP clients
+  - Expected: All enabled tools in local config should be visible via wrapper
+  - Current: Only toolman, task-master-ai, memory, filesystem tools visible
+  - Missing: git, github, time, docker, postgres, and 20+ other servers
+- [ ] **CRITICAL: enable_tool not working** - Tools get "enabled" but never become callable
+  - enable_tool shows success + updates config but tools remain unavailable
+  - Test: Enable git_status → config updated but mcp__toolman__git_status not callable
 - [ ] Clean up build warnings
-- [ ] Test with Claude Code (not just Cursor)
+- [x] Test with Claude Code (not just Cursor)
+- [x] Add user agent detection for client-specific responses (Cursor vs Claude Code)
+  - Note: Wrapper doesn't forward User-Agent headers; stdio protocol has no HTTP headers
+  - Need alternative client detection method (e.g., initialization params, env vars)
 
 ### Medium Priority (Polish)
 - [ ] Update documentation with current architecture
 - [ ] Add comprehensive error handling for server timeouts
 - [ ] Implement retry logic for server initialization
 - [ ] Add health check endpoints
+- [ ] Investigate MCP standard compliance for tool list updates
+  - Check if we're following the correct server-side MCP spec
+  - Determine if wrapper dependency is required for tool list refresh
+  - Evaluate best approach for dynamic tool list updates in Claude Code vs Cursor
 
 ### Low Priority (Nice to Have)
 - [ ] Implement `add_server` functionality

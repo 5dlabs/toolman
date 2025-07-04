@@ -1,18 +1,12 @@
 {
   "enabled_tools": {
+    "reddit_search_reddit": true,
+    "toolman_list_servers": true,
     "memory_read_graph": true,
-    "github_create_issue": true,
-    "task-master-ai_expand_task": true,
-    "filesystem_read_file": true,
     "git_git_status": true,
-    "task-master-ai_get_tasks": true,
-    "memory_search_nodes": false,
-    "task-master-ai_analyze_project_complexity": true,
-    "memory_create_entities": true,
-    "filesystem_list_allowed_directories": true,
-    "git_status": true,
-    "filesystem_write_file": true,
-    "task-master-ai_add_task": true
+    "filesystem_read_file": true,
+    "toolman_list_available_tools": true,
+    "toolman_list_tools": true
   },
-  "last_updated": "2025-06-29T17:51:30.243355+00:00"
+  "last_updated": "2025-07-03T22:47:15.640784+00:00"
 }

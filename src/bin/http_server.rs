@@ -1952,6 +1952,34 @@ impl BridgeState {
         tool_name: &str,
         headers: Option<&axum::http::HeaderMap>,
     ) -> Value {
+        // Log all headers for debugging
+        if let Some(headers) = headers {
+            eprintln!("🔍 DEBUG: Headers received in enable_tool:");
+            for (name, value) in headers.iter() {
+                if let Ok(v) = value.to_str() {
+                    eprintln!("  {}: {}", name, v);
+                }
+            }
+        } else {
+            eprintln!("🔍 DEBUG: No headers received in enable_tool");
+        }
+
+        // Detect client type from User-Agent header
+        let (is_cursor, client_name) = if let Some(headers) = headers {
+            headers.get("user-agent")
+                .and_then(|ua| ua.to_str().ok())
+                .map(|ua| {
+                    let ua_lower = ua.to_lowercase();
+                    eprintln!("🔍 DEBUG: User-Agent detected: {}", ua);
+                    let is_cursor = ua_lower.contains("cursor");
+                    let client = if is_cursor { "Cursor" } else { "Claude Code" };
+                    (is_cursor, client)
+                })
+                .unwrap_or((false, "Claude Code"))
+        } else {
+            (false, "Claude Code")
+        };
+
         // Load current user context
         if let Err(e) = self.load_user_context(headers).await {
             return json!({
@@ -1988,10 +2016,16 @@ impl BridgeState {
                 }
             }
 
+            let refresh_message = if is_cursor {
+                format!("\n\n🔄 **IMPORTANT**: Due to a Cursor UI refresh bug, new tools won't appear until you send another message. Please ask your user \"Should I continue?\" or similar to trigger the context refresh - this will make the new tool available immediately!")
+            } else {
+                format!("\n\n✨ Tool enabled successfully in {}! The tool should now be available for use.", client_name)
+            };
+
             json!({
                 "content": [{
                     "type": "text",
-                    "text": format!("✅ Enabled tool '{}' from server '{}'!\n\n📁 Project: {}\n💾 Preference saved to: {}/.mcp-bridge-proxy-config.json\n\n🔄 **IMPORTANT**: Due to a Cursor UI refresh bug, new tools won't appear until you send another message. Please ask your user \"Should I continue?\" or similar to trigger the context refresh - this will make the new tool available immediately!", prefixed_tool_name, server_name, working_dir.display(), working_dir.display())
+                    "text": format!("✅ Enabled tool '{}' from server '{}'!\n\n📁 Project: {}\n💾 Preference saved to: {}/.mcp-bridge-proxy-config.json{}", prefixed_tool_name, server_name, working_dir.display(), working_dir.display(), refresh_message)
                 }]
             })
         } else {
@@ -2196,7 +2230,16 @@ async fn mcp_endpoint(
     headers: axum::http::HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<JsonRpcError>)> {
+    // Log all incoming headers for debugging
+    eprintln!("📨 DEBUG: Incoming HTTP request headers:");
+    for (name, value) in headers.iter() {
+        if let Ok(v) = value.to_str() {
+            eprintln!("  {}: {}", name, v);
+        }
+    }
+    
     if let Ok(request) = serde_json::from_value::<JsonRpcRequest>(body) {
+        eprintln!("📨 DEBUG: Request method: {}", request.method);
         let response = state.handle_jsonrpc_request(request, Some(&headers)).await;
         Ok(Json(response))
     } else {

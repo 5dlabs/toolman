@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "toolman": {
+      "command": "/Users/jonathonfritz/mcp-proxy/target/release/toolman",
+      "args": [
+        "--url",
+        "http://localhost:3002/mcp",
+        "--working-dir",
+        "/Users/jonathonfritz/mcp-proxy"
+      ]
+    }
+  }
+}
