@@ -137,8 +137,7 @@ impl ServerRecoveryManager {
         }
 
         println!(
-            "📋 Registered server '{}' for monitoring and recovery",
-            server_name
+            "📋 Registered server '{server_name}' for monitoring and recovery"
         );
         Ok(())
     }
@@ -171,7 +170,7 @@ impl ServerRecoveryManager {
             }
         }
 
-        println!("📋 Unregistered server '{}' from monitoring", server_name);
+        println!("📋 Unregistered server '{server_name}' from monitoring");
         Ok(())
     }
 
@@ -245,7 +244,7 @@ impl ServerRecoveryManager {
 
             RecoveryStrategy::GracefulDegradation { feature } => {
                 RecoveryAction::RequireManualIntervention {
-                    message: format!("Graceful degradation: {} disabled", feature),
+                    message: format!("Graceful degradation: {feature} disabled"),
                 }
             }
         }
@@ -295,9 +294,9 @@ impl ServerRecoveryManager {
         let mut connection_info = match connection_info {
             Some(info) => info,
             None => {
-                return Err(ErrorContext::new(BridgeError::ServerNotFound {
+                return Err(Box::new(ErrorContext::new(BridgeError::ServerNotFound {
                     name: server_name.to_string(),
-                }));
+                })));
             }
         };
 
@@ -382,10 +381,10 @@ impl ServerRecoveryManager {
                 // Restart failed, increment circuit breaker
                 self.increment_circuit_breaker(server_name).await;
 
-                Err(ErrorContext::new(BridgeError::ServerRestartFailed {
+                Err(Box::new(ErrorContext::new(BridgeError::ServerRestartFailed {
                     server: server_name.to_string(),
                     reason: e.to_string(),
-                }))
+                })))
             }
         }
     }
@@ -597,10 +596,10 @@ mod tests {
         let health_config = HealthCheckConfig::default();
         let manager = ServerRecoveryManager::new(recovery_config, health_config);
 
-        let error = ErrorContext::new(BridgeError::ServerTimeout {
+        let error = Box::new(ErrorContext::new(BridgeError::ServerTimeout {
             name: "test_server".to_string(),
             timeout_secs: 5,
-        });
+        }));
 
         let action = manager.handle_error(&error).await;
 

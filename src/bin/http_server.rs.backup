@@ -3,7 +3,7 @@ use axum::{extract::State, http::StatusCode, response::Json, routing::post, Rout
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -710,6 +710,152 @@ impl BridgeState {
         Ok(())
     }
 
+    /// Parse enabled tools from header value
+    fn parse_enabled_tools_header(header_value: &str) -> Result<HashSet<String>, anyhow::Error> {
+        let mut enabled_tools = HashSet::new();
+        
+        // Support multiple formats:
+        // 1. Comma-separated: "memory_read_graph,filesystem_read_file"
+        // 2. JSON array: ["memory_read_graph", "filesystem_read_file"]
+        // 3. Wildcard: "*" (all tools), "memory_*" (all memory tools)
+        
+        let trimmed = header_value.trim();
+        
+        // Try parsing as JSON array first
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let tools: Vec<String> = serde_json::from_str(trimmed)?;
+            enabled_tools.extend(tools);
+        } else {
+            // Parse as comma-separated list
+            for tool in trimmed.split(',') {
+                let tool = tool.trim();
+                if !tool.is_empty() {
+                    enabled_tools.insert(tool.to_string());
+                }
+            }
+        }
+        
+        Ok(enabled_tools)
+    }
+
+    /// Check if a tool matches the enabled pattern
+    fn tool_matches_pattern(tool_name: &str, pattern: &str) -> bool {
+        if pattern == "*" {
+            return true;
+        }
+        
+        if pattern.ends_with("*") {
+            let prefix = &pattern[..pattern.len() - 1];
+            return tool_name.starts_with(prefix);
+        }
+        
+        tool_name == pattern
+    }
+
+    // Discover all tools from all configured servers and enable those marked as enabled in config
+    /// Extract user context from request headers and working directory
+    async fn load_user_context(
+        &self,
+        request_headers: Option<&axum::http::HeaderMap>,
+    ) -> anyhow::Result<()> {
+        // Extract working directory from X-Working-Directory header
+        let working_dir = if let Some(headers) = request_headers {
+            if let Some(working_dir_header) = headers.get("X-Working-Directory") {
+                let working_dir_str = working_dir_header
+                    .to_str()
+                    .map_err(|e| anyhow::anyhow!("Invalid working directory header: {}", e))?;
+                std::path::PathBuf::from(working_dir_str)
+            } else {
+                // Fallback to project directory if no header
+                self.project_dir
+                    .clone()
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+            }
+        } else {
+            // No headers provided, use project directory
+            self.project_dir
+                .clone()
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+        };
+
+        println!(
+            "🔍 DEBUG: Loading user context for working directory: {}",
+            working_dir.display()
+        );
+
+        // Canonicalize the path for consistency
+        let working_dir = working_dir.canonicalize().unwrap_or(working_dir);
+
+        // Store the current working directory
+        {
+            let mut current_wd = self.current_working_dir.write().await;
+            *current_wd = Some(working_dir.clone());
+        }
+
+        // Extract agent ID from configurable header
+        let agent_id = request_headers.and_then(|headers| {
+            headers
+                .get(&self.agent_header_name)
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        });
+
+        let config_file = match agent_id {
+            Some(id) => working_dir.join(format!(".mcp-bridge-proxy-config-{}.json", id)),
+            None => working_dir.join(".mcp-bridge-proxy-config.json"),
+        };
+
+        println!("🔍 Loading user config from: {}", config_file.display());
+
+        let user_config = UserConfig::load_from_file(&config_file)?;
+
+        // Store the loaded user config
+        {
+            let mut config = self.user_config.write().await;
+            *config = user_config;
+        }
+
+        println!(
+            "✅ DEBUG: User context loaded successfully for: {}",
+            working_dir.display()
+        );
+        Ok(())
+    }
+
+    /// Get the context identifier for debugging/logging
+    async fn get_context_id(&self) -> String {
+        let context_manager = self.context_manager.read().await;
+        if let Some(context) = context_manager.get_context() {
+            format!(
+                "{}:{}",
+                context.project_path,
+                context.user_id.as_deref().unwrap_or("default")
+            )
+        } else {
+            "unknown".to_string()
+        }
+    }
+
+    /// Determine if a tool should be enabled based on context preferences
+    /// SYSTEM vs USER CONFIG ARCHITECTURE:
+    /// - System config (servers-config.json) is used ONLY for server discovery and startup
+    /// - User contexts control tool visibility (default: all tools DISABLED)
+    /// - Only tools explicitly enabled via enable_tool appear in Cursor
+    async fn should_tool_be_enabled(&self, server_name: &str, tool_name: &str) -> bool {
+        // Check context preference first (this is the primary mechanism now)
+        let context_manager = self.context_manager.read().await;
+        if let Some(context_preference) =
+            context_manager.should_tool_be_enabled(server_name, tool_name)
+        {
+            return context_preference;
+        }
+        drop(context_manager);
+
+        // NEW ARCHITECTURE: Default to FALSE (all tools disabled by default)
+        // System config is no longer used for tool visibility - only for server startup
+        // This ensures clean separation: system discovers everything, user enables specific tools
+        false
+    }
 
     // Discover tools from a single server (without "starting" it permanently)
     async fn discover_server_tools(
@@ -1277,7 +1423,7 @@ impl BridgeState {
     async fn handle_jsonrpc_request(
         &self,
         request: JsonRpcRequest,
-        _headers: Option<&axum::http::HeaderMap>,
+        headers: Option<&axum::http::HeaderMap>,
     ) -> JsonRpcResponse {
         println!(
             "🔍 DEBUG: handle_jsonrpc_request called with method: {}",

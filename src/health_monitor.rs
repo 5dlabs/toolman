@@ -198,7 +198,7 @@ impl HealthMonitor {
         let mut tasks = self.monitoring_tasks.lock().await;
         tasks.insert(server_name.clone(), task);
 
-        println!("🔍 Started health monitoring for server: {}", server_name);
+        println!("🔍 Started health monitoring for server: {server_name}");
         Ok(())
     }
 
@@ -207,7 +207,7 @@ impl HealthMonitor {
         let mut tasks = self.monitoring_tasks.lock().await;
         if let Some(task) = tasks.remove(server_name) {
             task.abort();
-            println!("🛑 Stopped health monitoring for server: {}", server_name);
+            println!("🛑 Stopped health monitoring for server: {server_name}");
         }
 
         // Remove from health map
@@ -242,8 +242,7 @@ impl HealthMonitor {
                         status.health = ServerHealth::Healthy;
                         status.uptime_start = Some(Instant::now());
                         println!(
-                            "✅ Server '{}' has recovered and is now healthy",
-                            server_name
+                            "✅ Server '{server_name}' has recovered and is now healthy"
                         );
                     }
                     _ => {}
@@ -261,8 +260,8 @@ impl HealthMonitor {
             // Check if we need to trigger recovery
             if status.consecutive_failures >= self.config.failure_threshold {
                 println!(
-                    "⚠️ Server '{}' marked as unhealthy after {} consecutive failures",
-                    server_name, status.consecutive_failures
+                    "⚠️ Server '{server_name}' marked as unhealthy after {} consecutive failures",
+                    status.consecutive_failures
                 );
             }
         }
@@ -294,8 +293,7 @@ impl HealthMonitor {
             status.health = ServerHealth::Crashed { exit_code };
             status.uptime_start = None;
             println!(
-                "💥 Server '{}' marked as crashed (exit code: {:?})",
-                server_name, exit_code
+                "💥 Server '{server_name}' marked as crashed (exit code: {exit_code:?})"
             );
         }
     }
@@ -309,8 +307,8 @@ impl HealthMonitor {
                 attempt: status.restart_attempts,
             };
             println!(
-                "🔄 Server '{}' restart attempt #{}",
-                server_name, status.restart_attempts
+                "🔄 Server '{server_name}' restart attempt #{}",
+                status.restart_attempts
             );
         }
     }
@@ -324,8 +322,7 @@ impl HealthMonitor {
             status.consecutive_successes = 1;
             status.uptime_start = Some(Instant::now());
             println!(
-                "✅ Server '{}' marked as healthy after restart",
-                server_name
+                "✅ Server '{server_name}' marked as healthy after restart"
             );
         }
     }
@@ -381,7 +378,7 @@ impl HealthMonitor {
                     }
                 }
                 _ = shutdown_rx.recv() => {
-                    println!("🛑 Shutting down health monitor for server: {}", server_name);
+                    println!("🛑 Shutting down health monitor for server: {server_name}");
                     break;
                 }
             }
@@ -407,10 +404,10 @@ impl HealthMonitor {
 
             if hash % 50 == 0 {
                 // 2% failure rate for simulation
-                Err(ErrorContext::new(BridgeError::HealthCheckFailed {
+                Err(Box::new(ErrorContext::new(BridgeError::HealthCheckFailed {
                     server: server_name.to_string(),
                     reason: "Simulated health check failure".to_string(),
-                }))
+                })))
             } else {
                 Ok(())
             }
@@ -418,10 +415,10 @@ impl HealthMonitor {
 
         match tokio::time::timeout(timeout, check_future).await {
             Ok(result) => result,
-            Err(_) => Err(ErrorContext::new(BridgeError::ServerTimeout {
+            Err(_) => Err(Box::new(ErrorContext::new(BridgeError::ServerTimeout {
                 name: server_name.to_string(),
                 timeout_secs: timeout.as_secs(),
-            })),
+            }))),
         }
     }
 
@@ -436,7 +433,7 @@ impl HealthMonitor {
         for (server_name, task) in tasks.drain() {
             task.abort();
             let _ = task.await;
-            println!("🛑 Shutdown monitoring for server: {}", server_name);
+            println!("🛑 Shutdown monitoring for server: {server_name}");
         }
     }
 }

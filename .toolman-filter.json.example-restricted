@@ -1,0 +1,9 @@
+{
+  "enabled_tools": [
+    "filesystem_read_file",
+    "filesystem_list_directory", 
+    "memory_*",
+    "github_create_issue",
+    "github_list_issues"
+  ]
+}

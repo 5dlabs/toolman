@@ -5,9 +5,9 @@ edition = "2021"
 description = "Dynamic tool management for MCP (Model Context Protocol) servers - Your ultimate tool companion"
 authors = ["Toolman Contributors"]
 license = "MIT"
-repository = "https://github.com/your-username/toolman"
-homepage = "https://github.com/your-username/toolman"
-documentation = "https://github.com/your-username/toolman"
+repository = "https://github.com/5dlabs/toolman"
+homepage = "https://github.com/5dlabs/toolman"
+documentation = "https://github.com/5dlabs/toolman"
 keywords = ["mcp", "model-context-protocol", "ai", "tools", "cursor", "toolman"]
 categories = ["command-line-utilities", "development-tools"]
 
@@ -27,18 +27,19 @@ path = "src/bin/http_server.rs"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.0", features = ["derive"] }
-dirs = "5.0"
+dirs = "6.0.0"
 sha2 = "0.10"
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
+thiserror = "2.0.12"
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest = { version = "0.11", features = ["json"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 regex = "1.10"
+rmcp = { version = "0.2.0", features = ["server", "transport-streamable-http-server", "transport-child-process", "transport-worker"] }
 
 # HTTP server dependencies
 axum = { version = "0.7", features = ["json"] }

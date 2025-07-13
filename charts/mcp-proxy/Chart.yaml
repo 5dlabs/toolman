@@ -1,0 +1,19 @@
+apiVersion: v2
+name: mcp-proxy
+description: A Helm chart for MCP Bridge Proxy - Dynamic tool management for MCP servers
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - mcp
+  - model-context-protocol
+  - ai
+  - tools
+  - cursor
+  - toolman
+home: https://github.com/your-username/mcp-proxy
+sources:
+  - https://github.com/your-username/mcp-proxy
+maintainers:
+  - name: MCP Proxy Contributors
+    email: maintainers@example.com

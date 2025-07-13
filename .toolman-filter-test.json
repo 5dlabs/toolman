@@ -1,0 +1,6 @@
+{
+  "enabled_tools": [
+    "filesystem_read_file",
+    "memory_*"
+  ]
+}

@@ -13,18 +13,18 @@ Toolman is a high-performance Rust proxy that manages multiple MCP (Model Contex
 When working with AI assistants like Claude or Cursor, you often need different tools for different projects. Toolman acts as a smart gateway that:
 
 - **Consolidates multiple MCP servers** into a single endpoint
-- **Filters tools** to show only what you need for your current project
-- **Manages tool access** with fine-grained control per server and per tool
+- **Exposes all available tools** from configured servers via HTTP
+- **Supports client-side filtering** through the stdio wrapper for per-agent tool selection
 - **Runs anywhere** - locally, in Docker, or on Kubernetes
 
 ## ✨ Key Features
 
-- 🎛️ **Selective Tool Exposure** - Enable only the tools you need
+- 🎛️ **HTTP Server** - Aggregates all tools from configured MCP servers
 - 🏗️ **Multi-Server Support** - Connect to 25+ MCP servers through one endpoint
-- 🔧 **Fine-Grained Control** - Enable/disable individual tools within servers
+- 🔧 **Client-Side Filtering** - Each agent can specify which tools to use via `.toolman-filter.json`
 - 🐳 **Container Ready** - Multi-platform Docker images (amd64/arm64)
 - ⚡ **High Performance** - Built in Rust for speed and reliability
-- 🔒 **Secure by Default** - Only explicitly enabled tools are exposed
+- 🔒 **Flexible Architecture** - HTTP server exposes everything, clients filter as needed
 
 ## 🚀 Quick Start
 
@@ -105,6 +105,26 @@ Configure which tools are available by editing `servers-config.json`:
   }
 }
 ```
+
+## 🎯 Client-Side Tool Filtering
+
+The stdio wrapper (`toolman` binary) supports client-side filtering of tools. Create a `.toolman-filter.json` file in your working directory:
+
+```json
+{
+  "enabled_tools": [
+    "filesystem_*",           // Enable all filesystem tools
+    "memory_store",          // Enable specific tool
+    "github_create_issue",   // Enable another specific tool
+    "github_list_*"         // Enable all GitHub list tools
+  ]
+}
+```
+
+Special patterns:
+- `"*"` - Enable all tools (default if no config file exists)
+- `"prefix_*"` - Enable all tools starting with prefix
+- `"exact_name"` - Enable only the specific tool
 
 ## 🔧 Supported MCP Servers
 

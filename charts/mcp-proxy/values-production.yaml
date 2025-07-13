@@ -1,0 +1,120 @@
+# Production values for mcp-proxy
+# This file contains production-ready settings
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/your-username/mcp-proxy
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: mcp-proxy.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: mcp-proxy-tls
+      hosts:
+        - mcp-proxy.yourdomain.com
+
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"
+  size: 5Gi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 10s
+
+env:
+  - name: PORT
+    value: "3000"
+  - name: PROJECT_DIR
+    value: "/config"
+  - name: RUST_LOG
+    value: "info"
+  - name: RUST_BACKTRACE
+    value: "1"
+
+config:
+  servers:
+    mcpServers:
+      filesystem:
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+        env: {}
+        disabled: false
+      brave-search:
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-brave-search"]
+        env:
+          BRAVE_API_KEY: "${BRAVE_API_KEY}"
+        disabled: false
+      fetch:
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-fetch"]
+        env: {}
+        disabled: false
+      github:
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+        disabled: false

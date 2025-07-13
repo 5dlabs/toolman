@@ -238,38 +238,34 @@ impl ErrorContext {
     pub fn user_message(&self) -> String {
         match &self.error {
             BridgeError::ServerTimeout { name, timeout_secs } => {
-                format!("⏱️ Server '{}' is taking longer than expected ({}s). This might be temporary - please try again.", name, timeout_secs)
+                format!("⏱️ Server '{name}' is taking longer than expected ({timeout_secs}s). This might be temporary - please try again.")
             }
 
             BridgeError::ServerCrashed { name, .. } => {
                 format!(
-                    "🔄 Server '{}' encountered an issue and is being restarted automatically.",
-                    name
+                    "🔄 Server '{name}' encountered an issue and is being restarted automatically."
                 )
             }
 
             BridgeError::ToolNotFound { server, tool } => {
-                format!("🔧 Tool '{}' is not available on server '{}'. Check if the tool exists or try enabling it first.", tool, server)
+                format!("🔧 Tool '{tool}' is not available on server '{server}'. Check if the tool exists or try enabling it first.")
             }
 
             BridgeError::ToolDisabled { tool } => {
                 format!(
-                    "⚠️ Tool '{}' is currently disabled. Use enable_tool to make it available.",
-                    tool
+                    "⚠️ Tool '{tool}' is currently disabled. Use enable_tool to make it available."
                 )
             }
 
             BridgeError::ConfigurationError { reason } => {
                 format!(
-                    "⚙️ Configuration issue: {}. Please check your servers-config.json file.",
-                    reason
+                    "⚙️ Configuration issue: {reason}. Please check your servers-config.json file."
                 )
             }
 
             BridgeError::InvalidJsonRpc { reason } => {
                 format!(
-                    "📝 Request format issue: {}. Please check the request structure.",
-                    reason
+                    "📝 Request format issue: {reason}. Please check the request structure."
                 )
             }
 
@@ -297,7 +293,7 @@ impl ErrorContext {
 }
 
 /// Result type with our custom error context
-pub type BridgeResult<T> = Result<T, ErrorContext>;
+pub type BridgeResult<T> = Result<T, Box<ErrorContext>>;
 
 /// Helper trait for converting errors to our error context
 pub trait IntoBridgeError<T> {
@@ -314,9 +310,9 @@ where
 {
     fn into_bridge_error(self) -> BridgeResult<T> {
         self.map_err(|e| {
-            ErrorContext::new(BridgeError::Internal {
+            Box::new(ErrorContext::new(BridgeError::Internal {
                 reason: e.to_string(),
-            })
+            }))
         })
     }
 
@@ -324,7 +320,7 @@ where
         self,
         context_fn: impl FnOnce() -> ErrorContext,
     ) -> BridgeResult<T> {
-        self.map_err(|_| context_fn())
+        self.map_err(|_| Box::new(context_fn()))
     }
 }
 

@@ -44,7 +44,7 @@ impl ToolSuggester {
         // Filesystem tools
         self.tool_keywords.insert(
             ("filesystem".to_string(), "read_file".to_string()),
-            vec![
+            [
                 "read file",
                 "load file",
                 "open file",
@@ -58,7 +58,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("filesystem".to_string(), "write_file".to_string()),
-            vec![
+            [
                 "write file",
                 "save file",
                 "create file",
@@ -73,7 +73,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("filesystem".to_string(), "list_directory".to_string()),
-            vec![
+            [
                 "list files",
                 "directory contents",
                 "folder structure",
@@ -88,7 +88,7 @@ impl ToolSuggester {
         // Git tools
         self.tool_keywords.insert(
             ("git".to_string(), "git_status".to_string()),
-            vec![
+            [
                 "git status",
                 "check changes",
                 "uncommitted",
@@ -101,7 +101,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("git".to_string(), "git_commit".to_string()),
-            vec!["commit", "git commit", "save changes", "checkpoint"]
+            ["commit", "git commit", "save changes", "checkpoint"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -110,7 +110,7 @@ impl ToolSuggester {
         // Memory tools
         self.tool_keywords.insert(
             ("memory".to_string(), "create_entities".to_string()),
-            vec![
+            [
                 "remember",
                 "store information",
                 "save to memory",
@@ -124,7 +124,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("memory".to_string(), "read_graph".to_string()),
-            vec![
+            [
                 "recall",
                 "retrieve memory",
                 "what do you know",
@@ -139,7 +139,7 @@ impl ToolSuggester {
         // GitHub tools
         self.tool_keywords.insert(
             ("github".to_string(), "create_issue".to_string()),
-            vec![
+            [
                 "create issue",
                 "github issue",
                 "bug report",
@@ -153,7 +153,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("github".to_string(), "create_pull_request".to_string()),
-            vec!["pull request", "PR", "merge request", "code review"]
+            ["pull request", "PR", "merge request", "code review"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -162,7 +162,7 @@ impl ToolSuggester {
         // TaskMaster tools
         self.tool_keywords.insert(
             ("task-master-ai".to_string(), "get_tasks".to_string()),
-            vec!["list tasks", "show tasks", "task status", "project status"]
+            ["list tasks", "show tasks", "task status", "project status"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -170,7 +170,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("task-master-ai".to_string(), "add_task".to_string()),
-            vec!["add task", "create task", "new task", "task for"]
+            ["add task", "create task", "new task", "task for"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -179,7 +179,7 @@ impl ToolSuggester {
         // Docker tools
         self.tool_keywords.insert(
             ("docker".to_string(), "list_containers".to_string()),
-            vec![
+            [
                 "docker ps",
                 "list containers",
                 "running containers",
@@ -192,7 +192,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("docker".to_string(), "build_image".to_string()),
-            vec!["docker build", "build image", "create image", "dockerfile"]
+            ["docker build", "build image", "create image", "dockerfile"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -201,7 +201,7 @@ impl ToolSuggester {
         // Browser/Puppeteer tools
         self.tool_keywords.insert(
             ("puppeteer".to_string(), "screenshot".to_string()),
-            vec![
+            [
                 "screenshot",
                 "capture page",
                 "web screenshot",
@@ -214,7 +214,7 @@ impl ToolSuggester {
 
         self.tool_keywords.insert(
             ("puppeteer".to_string(), "navigate".to_string()),
-            vec![
+            [
                 "navigate to",
                 "open url",
                 "browse to",
@@ -262,7 +262,7 @@ impl ToolSuggester {
 
         // Combine description and details for analysis
         let full_text =
-            format!("{} {}", task_description, task_details.unwrap_or("")).to_lowercase();
+            format!("{task_description} {}", task_details.unwrap_or("")).to_lowercase();
 
         // Extract existing tool tags
         let tag_regex = Regex::new(r"#tool:(\w+)").unwrap();
@@ -273,7 +273,7 @@ impl ToolSuggester {
 
         // Check keyword mappings
         for ((server, tool), keywords) in &self.tool_keywords {
-            let tool_key = format!("{}_{}", server, tool);
+            let tool_key = format!("{server}_{tool}");
             if seen_tools.contains(&tool_key) {
                 continue;
             }
@@ -304,7 +304,7 @@ impl ToolSuggester {
         for (pattern, tools) in &self.patterns {
             if pattern.is_match(&full_text) {
                 for (server, tool) in tools {
-                    let tool_key = format!("{}_{}", server, tool);
+                    let tool_key = format!("{server}_{tool}");
                     if !seen_tools.contains(&tool_key) {
                         suggested_tools.push(ToolSuggestion {
                             server_name: server.clone(),

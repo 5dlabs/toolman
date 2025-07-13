@@ -6,34 +6,6 @@ use std::path::PathBuf;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 
-// Re-export the stdio wrapper module
-pub mod stdio_wrapper;
-
-// Comprehensive error handling system
-pub mod errors;
-
-// Server health monitoring and recovery
-pub mod health_monitor;
-
-// Comprehensive server recovery system
-pub mod recovery;
-
-// Context-based user configuration management
-pub mod context;
-
-// Configuration management
-pub mod config;
-
-// Services
-pub mod services;
-
-// Re-export key types from stdio_wrapper for convenience
-pub use context::{ContextConfig, ContextManager};
-pub use stdio_wrapper::StdioWrapper;
-
-// Tool suggester module
-pub mod tool_suggester;
-
 /// Tool configuration within a server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolConfig {
@@ -72,12 +44,12 @@ pub struct ServersConfig {
 
 /// Configuration manager for loading and managing server configs
 #[derive(Debug, Clone)]
-pub struct ConfigManager {
+pub struct SystemConfigManager {
     config_path: PathBuf,
     config: ServersConfig,
 }
 
-impl ConfigManager {
+impl SystemConfigManager {
     pub fn new(project_dir: Option<PathBuf>) -> Result<Self> {
         let config_path = if let Some(dir) = project_dir {
             dir.join("servers-config.json")

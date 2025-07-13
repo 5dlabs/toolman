@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mcp-proxy.configMapName" . }}
+  labels:
+    {{- include "mcp-proxy.labels" . | nindent 4 }}
+data:
+  servers-config.json: |
+    {{- if .Values.config.servers }}
+    {{- .Values.config.servers | toJson | nindent 4 }}
+    {{- else }}
+    {
+      "mcpServers": {
+        "filesystem": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+          "env": {},
+          "disabled": false
+        },
+        "brave-search": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": ""
+          },
+          "disabled": true
+        },
+        "fetch": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-fetch"],
+          "env": {},
+          "disabled": false
+        }
+      }
+    }
+    {{- end }}
