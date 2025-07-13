@@ -6,6 +6,10 @@ use std::path::PathBuf;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 
+fn default_transport() -> String {
+    "stdio".to_string()
+}
+
 /// Tool configuration within a server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolConfig {
@@ -17,8 +21,17 @@ pub struct ToolConfig {
 pub struct ServerConfig {
     pub name: Option<String>,
     pub description: Option<String>,
+    /// Transport type: "stdio" (default) or "http"
+    #[serde(default = "default_transport")]
+    pub transport: String,
+    /// For stdio: command to execute
+    #[serde(default)]
     pub command: String,
+    /// For stdio: command arguments
+    #[serde(default)]
     pub args: Vec<String>,
+    /// For http: URL to connect to
+    pub url: Option<String>,
     #[serde(default)]
     pub enabled: bool,
     #[serde(rename = "alwaysActive", default)]
