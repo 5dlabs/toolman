@@ -31,7 +31,7 @@ When working with AI assistants like Claude or Cursor, you often need different 
 ### One-Line Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-username/mcp-proxy/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/5dlabs/toolman/main/scripts/install.sh | bash
 ```
 
 This will:
@@ -43,7 +43,7 @@ This will:
 
 ### Manual Installation
 
-Download the appropriate binary for your platform from the [releases page](https://github.com/your-username/mcp-proxy/releases).
+Download the appropriate binary for your platform from the [releases page](https://github.com/5dlabs/toolman/releases).
 
 ### Using Docker
 

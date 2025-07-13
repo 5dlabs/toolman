@@ -13,7 +13,7 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Default values
-REPO="your-username/mcp-proxy"
+REPO="5dlabs/toolman"
 INSTALL_DIR="$HOME/.local/bin"
 BINARY_NAME="toolman"
 HTTP_BINARY_NAME="toolman-http"
@@ -119,7 +119,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --repo)
-            REPO="$2"
+            REPO="5dlabs/toolman"
             shift 2
             ;;
         --no-path)
