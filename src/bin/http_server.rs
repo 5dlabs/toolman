@@ -7,9 +7,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use toolman::tool_suggester::ToolSuggester;
-use toolman::{resolve_working_directory};
 use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager};
+use toolman::resolve_working_directory;
+use toolman::tool_suggester::ToolSuggester;
 use tower_http::cors::CorsLayer;
 
 /// Simple HTTP MCP Bridge Server
@@ -507,15 +507,15 @@ impl ServerConnectionPool {
             .get_servers()
             .get(server_name)
             .ok_or_else(|| anyhow::anyhow!("Server '{}' not found", server_name))?;
-        
+
         // Handle HTTP transport
         if server_config.transport == "http" {
             if let Some(url) = &server_config.url {
                 println!("🌐 Forwarding HTTP request to: {}", url);
-                
+
                 // Create HTTP client if not exists
                 let client = reqwest::Client::new();
-                
+
                 // Create JSON-RPC request
                 let request_body = json!({
                     "jsonrpc": "2.0",
@@ -526,7 +526,7 @@ impl ServerConnectionPool {
                         "arguments": arguments
                     }
                 });
-                
+
                 // Send HTTP POST request
                 let response = client
                     .post(url)
@@ -534,20 +534,20 @@ impl ServerConnectionPool {
                     .send()
                     .await
                     .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
-                
+
                 // Parse response
                 let response_json: Value = response
                     .json()
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to parse HTTP response: {}", e))?;
-                
+
                 println!("📨 Received HTTP response from server {}", server_name);
                 return Ok(response_json);
             } else {
                 return Err(anyhow::anyhow!("HTTP transport requires 'url' field"));
             }
         }
-        
+
         // Original stdio logic
         // Start server if not already started, with user context for filesystem server
         if server_name == "filesystem" && user_working_dir.is_some() {
@@ -599,7 +599,6 @@ impl ServerConnectionPool {
         Ok(response)
     }
 
-
     /// Stop a server connection
     async fn stop_server(&self, server_name: &str) -> anyhow::Result<()> {
         let connection = {
@@ -615,7 +614,6 @@ impl ServerConnectionPool {
 
         Ok(())
     }
-
 }
 
 #[derive(Clone)]
@@ -677,7 +675,6 @@ impl BridgeState {
 
         let system_config_manager = Arc::new(RwLock::new(system_config_manager_instance));
         let connection_pool = Arc::new(ServerConnectionPool::new(system_config_manager.clone()));
-
 
         // Create the state
         let state = Self {
@@ -754,14 +751,17 @@ impl BridgeState {
             server_name,
             chrono::Utc::now().format("%H:%M:%S")
         );
-        
+
         // Handle HTTP transport
         if config.transport == "http" {
             if let Some(url) = &config.url {
-                println!("🌐 [{}] Discovering tools from HTTP server: {}", server_name, url);
-                
+                println!(
+                    "🌐 [{}] Discovering tools from HTTP server: {}",
+                    server_name, url
+                );
+
                 let client = reqwest::Client::new();
-                
+
                 // Initialize the server
                 let init_request = json!({
                     "jsonrpc": "2.0",
@@ -776,14 +776,14 @@ impl BridgeState {
                         }
                     }
                 });
-                
+
                 let _init_response = client
                     .post(url)
                     .json(&init_request)
                     .send()
                     .await
                     .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
-                
+
                 // Get tools list
                 let tools_request = json!({
                     "jsonrpc": "2.0",
@@ -791,19 +791,19 @@ impl BridgeState {
                     "method": "tools/list",
                     "params": {}
                 });
-                
+
                 let tools_response = client
                     .post(url)
                     .json(&tools_request)
                     .send()
                     .await
                     .map_err(|e| anyhow::anyhow!("HTTP tools request failed: {}", e))?;
-                
+
                 let response_json: Value = tools_response
                     .json()
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to parse tools response: {}", e))?;
-                
+
                 // Parse tools from response
                 if let Some(result) = response_json.get("result") {
                     if let Some(tools_array) = result.get("tools").and_then(|t| t.as_array()) {
@@ -828,29 +828,29 @@ impl BridgeState {
                                 }
                             })
                             .collect();
-                        
+
                         println!(
                             "✅ [{}] Discovered {} tools via HTTP (elapsed: {:?})",
                             server_name,
                             parsed_tools.len(),
                             start_time.elapsed()
                         );
-                        
+
                         return Ok(parsed_tools);
                     }
                 }
-                
+
                 return Ok(Vec::new());
             } else {
                 return Err(anyhow::anyhow!("HTTP transport requires 'url' field"));
             }
         }
-        
+
         // Original stdio discovery logic
         use std::process::Stdio;
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
         use tokio::process::Command;
-        
+
         println!(
             "🔍 [{}] Command: {} {}",
             server_name,
@@ -1679,7 +1679,6 @@ impl BridgeState {
             },
         }
     }
-
 }
 
 async fn mcp_endpoint(
