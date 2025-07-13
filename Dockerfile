@@ -8,6 +8,7 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy source code
 COPY src ./src
+COPY build.rs ./
 
 # Build for release
 RUN cargo build --release --bin toolman-http
@@ -19,6 +20,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from builder
