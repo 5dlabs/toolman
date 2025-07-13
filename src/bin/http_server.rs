@@ -695,8 +695,6 @@ impl UserConfig {
         self.enabled_tools.get(tool_name).copied()
     }
 
-
-
     fn load_from_file(config_file: &std::path::Path) -> Result<Self> {
         if config_file.exists() {
             let content = std::fs::read_to_string(config_file)?;
@@ -707,7 +705,10 @@ impl UserConfig {
             println!("📂 Loaded user config from: {}", config_file.display());
             Ok(config)
         } else {
-            println!("📂 No user config found, creating new one at: {}", config_file.display());
+            println!(
+                "📂 No user config found, creating new one at: {}",
+                config_file.display()
+            );
             Ok(Self::new())
         }
     }
@@ -741,7 +742,8 @@ impl BridgeState {
         let context_manager = Arc::new(RwLock::new(context_manager_instance));
 
         // Agent header name for per-session isolation
-        let agent_header_name = std::env::var("AGENT_HEADER_NAME").unwrap_or("X-Agent-ID".to_string());
+        let agent_header_name =
+            std::env::var("AGENT_HEADER_NAME").unwrap_or("X-Agent-ID".to_string());
 
         Ok(Self {
             system_config_manager,
@@ -797,7 +799,8 @@ impl BridgeState {
 
         // Extract agent ID from configurable header
         let agent_id = request_headers.and_then(|headers| {
-            headers.get(&self.agent_header_name)
+            headers
+                .get(&self.agent_header_name)
                 .and_then(|h| h.to_str().ok())
                 .map(|s| s.to_string())
         });
@@ -837,7 +840,6 @@ impl BridgeState {
             "unknown".to_string()
         }
     }
-
 
     /// Determine if a tool should be enabled based on context preferences
     /// SYSTEM vs USER CONFIG ARCHITECTURE:
@@ -1467,32 +1469,30 @@ impl BridgeState {
 
                 println!("🔍 DEBUG: Context loaded successfully, building tool list");
 
-                let mut all_tools = vec![
-                    json!({
-                        "name": "suggest_tools_for_tasks",
-                        "description": "🤖 Analyze TaskMaster tasks and suggest appropriate MCP tools based on task descriptions and requirements",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "tasks": {
-                                    "type": "array",
-                                    "description": "Array of tasks from TaskMaster to analyze",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "id": { "type": "string" },
-                                            "title": { "type": "string" },
-                                            "description": { "type": "string" },
-                                            "details": { "type": "string" },
-                                            "subtasks": { "type": "array" }
-                                        }
+                let mut all_tools = vec![json!({
+                    "name": "suggest_tools_for_tasks",
+                    "description": "🤖 Analyze TaskMaster tasks and suggest appropriate MCP tools based on task descriptions and requirements",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tasks": {
+                                "type": "array",
+                                "description": "Array of tasks from TaskMaster to analyze",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": { "type": "string" },
+                                        "title": { "type": "string" },
+                                        "description": { "type": "string" },
+                                        "details": { "type": "string" },
+                                        "subtasks": { "type": "array" }
                                     }
                                 }
-                            },
-                            "required": ["tasks"]
-                        }
-                    }),
-                ];
+                            }
+                        },
+                        "required": ["tasks"]
+                    }
+                })];
 
                 // Add tools based on static configuration
                 let available_tools = self.available_tools.read().await;
@@ -1509,7 +1509,8 @@ impl BridgeState {
                     let prefixed_tool_name = format!("{}_{}", tool.server_name, tool.name);
 
                     // Check if this tool should be enabled based on static config
-                    let should_enable = if let Some(server_config) = servers.get(&tool.server_name) {
+                    let should_enable = if let Some(server_config) = servers.get(&tool.server_name)
+                    {
                         // First check if the server itself is enabled
                         if !server_config.enabled {
                             println!(
@@ -1762,8 +1763,6 @@ impl BridgeState {
         }
     }
 
-
-
     async fn discover_available_tools_tool(&self, include_descriptions: bool) -> Value {
         let config_manager = self.system_config_manager.read().await;
         let servers = config_manager.get_servers();
@@ -1816,7 +1815,6 @@ impl BridgeState {
         })
     }
 
-
     async fn add_server(&self, repo_url: &str) -> Value {
         // TODO: Implement intelligent server addition
         // This should:
@@ -1845,7 +1843,7 @@ async fn mcp_endpoint(
             eprintln!("  {}: {}", name, v);
         }
     }
-    
+
     if let Ok(request) = serde_json::from_value::<JsonRpcRequest>(body) {
         eprintln!("📨 DEBUG: Request method: {}", request.method);
         let response = state.handle_jsonrpc_request(request, Some(&headers)).await;

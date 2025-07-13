@@ -72,8 +72,6 @@ impl ContextConfig {
         // No preference set in this context
         None
     }
-
-
 }
 
 /// Context manager for handling user-specific tool configurations
@@ -160,8 +158,6 @@ impl ContextManager {
         }
         Ok(())
     }
-
-
 
     /// Check if a tool should be enabled based on context and default config
     /// Returns: Some(true) = force enabled, Some(false) = force disabled, None = use default
