@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.75 as builder
+FROM rust:1.75 AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,6 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy source code
 COPY src ./src
-COPY build.rs ./
 
 # Build for release
 RUN cargo build --release --bin toolman-http
