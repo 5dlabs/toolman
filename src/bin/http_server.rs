@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use toolman::tool_suggester::ToolSuggester;
-use toolman::{resolve_working_directory, ConfigManager, ContextManager, ServerConfig};
+use toolman::{resolve_working_directory, ConfigManager, ServerConfig};
 use tower_http::cors::CorsLayer;
 
 /// Simple HTTP MCP Bridge Server
@@ -48,10 +48,6 @@ struct ParsedTool {
 enum ToolParseError {
     #[error("Invalid tool name format: '{0}' (expected 'server_tool' format)")]
     InvalidFormat(String),
-    #[error("Missing tool name: '{0}' (server name only)")]
-    MissingToolName(String),
-    #[error("Missing server name: '{0}' (tool name only)")]
-    MissingServerName(String),
     #[error("Empty tool name")]
     EmptyToolName,
 }
@@ -121,6 +117,7 @@ fn parse_tool_name_with_servers(
 }
 
 // Legacy function for backwards compatibility with tests
+#[cfg(test)]
 fn parse_tool_name(tool_name: &str) -> Result<ParsedTool, ToolParseError> {
     // Fallback to simple pattern matching when server list not available
     if tool_name.is_empty() {
@@ -553,16 +550,6 @@ impl ServerConnectionPool {
         Ok(response)
     }
 
-    /// Forward a tool call to the appropriate server
-    async fn forward_tool_call(
-        &self,
-        server_name: &str,
-        tool_name: &str,
-        arguments: Value,
-    ) -> anyhow::Result<Value> {
-        self.forward_tool_call_with_context(server_name, tool_name, arguments, None)
-            .await
-    }
 
     /// Stop a server connection
     async fn stop_server(&self, server_name: &str) -> anyhow::Result<()> {
@@ -580,11 +567,6 @@ impl ServerConnectionPool {
         Ok(())
     }
 
-    /// Get all active connections
-    async fn list_active_connections(&self) -> Vec<String> {
-        let connections = self.connections.read().await;
-        connections.keys().cloned().collect()
-    }
 }
 
 #[derive(Clone)]
@@ -595,10 +577,6 @@ pub struct BridgeState {
     available_tools: Arc<RwLock<HashMap<String, Tool>>>,
     // Connection pool for active MCP servers
     connection_pool: Arc<ServerConnectionPool>,
-    // Context manager for user-specific tool configurations
-    context_manager: Arc<RwLock<ContextManager>>,
-    // Current project directory for context resolution
-    project_dir: Option<std::path::PathBuf>,
     // Current working directory for user context (per-request)
     current_working_dir: Arc<RwLock<Option<std::path::PathBuf>>>,
 }
@@ -606,6 +584,7 @@ pub struct BridgeState {
 // JSON-RPC 2.0 message types
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
+    #[allow(dead_code)]
     jsonrpc: String,
     id: Option<Value>,
     method: String,
@@ -650,18 +629,12 @@ impl BridgeState {
         let system_config_manager = Arc::new(RwLock::new(system_config_manager_instance));
         let connection_pool = Arc::new(ServerConnectionPool::new(system_config_manager.clone()));
 
-        // Initialize context manager
-        let context_manager_instance = ContextManager::new()
-            .map_err(|e| anyhow::anyhow!("Failed to initialize context manager: {}", e))?;
-        let context_manager = Arc::new(RwLock::new(context_manager_instance));
 
         // Create the state
         let state = Self {
             system_config_manager,
             available_tools: Arc::new(RwLock::new(HashMap::new())),
             connection_pool,
-            context_manager,
-            project_dir,
             current_working_dir: Arc::new(RwLock::new(None)),
         };
 
@@ -1565,72 +1538,6 @@ impl BridgeState {
         }
     }
 
-    async fn discover_available_tools_tool(&self, include_descriptions: bool) -> Value {
-        let config_manager = self.system_config_manager.read().await;
-        let servers = config_manager.get_servers();
-        let available_tools = self.available_tools.read().await;
-
-        let mut server_info = Vec::new();
-
-        for (server_name, config) in servers.iter() {
-            let server_tools: Vec<_> = available_tools
-                .values()
-                .filter(|tool| tool.server_name == *server_name)
-                .map(|tool| {
-                    let mut tool_info = json!({
-                        "name": tool.name,
-                        "enabled": true
-                    });
-
-                    if include_descriptions {
-                        tool_info["description"] = json!(tool.description);
-                    }
-
-                    tool_info
-                })
-                .collect();
-
-            if !server_tools.is_empty() {
-                server_info.push(json!({
-                    "server": server_name,
-                    "description": config.description.as_deref().unwrap_or("No description"),
-                    "tools_count": server_tools.len(),
-                    "tools": server_tools
-                }));
-            }
-        }
-
-        let summary = json!({
-            "summary": {
-                "total_servers": server_info.len(),
-                "total_tools_available": available_tools.len(),
-                "total_tools_enabled": 0
-            },
-            "servers": server_info
-        });
-
-        json!({
-            "content": [{
-                "type": "text",
-                "text": serde_json::to_string_pretty(&summary).unwrap_or_default()
-            }]
-        })
-    }
-
-    async fn add_server(&self, repo_url: &str) -> Value {
-        // TODO: Implement intelligent server addition
-        // This should:
-        // 1. Download README via GitHub CLI
-        // 2. Analyze for server type (npm, python, docker, rust)
-        // 3. Test server setup in isolation
-        // 4. Add to ephemeral config if successful
-        json!({
-            "content": [{
-                "type": "text",
-                "text": format!("🚀 add_server called with repo_url: {} - Implementation needed", repo_url)
-            }]
-        })
-    }
 }
 
 async fn mcp_endpoint(

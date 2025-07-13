@@ -28,6 +28,23 @@ When working with AI assistants like Claude or Cursor, you often need different 
 
 ## 🚀 Quick Start
 
+### One-Line Install (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/your-username/mcp-proxy/main/scripts/install.sh | bash
+```
+
+This will:
+- ✅ Auto-detect your platform (Linux, macOS, Windows)
+- ✅ Download and install the latest binaries
+- ✅ Configure Cursor IDE integration
+- ✅ Set up example configuration files
+- ✅ Add binaries to your PATH
+
+### Manual Installation
+
+Download the appropriate binary for your platform from the [releases page](https://github.com/your-username/mcp-proxy/releases).
+
 ### Using Docker
 
 ```bash

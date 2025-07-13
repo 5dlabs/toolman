@@ -459,10 +459,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            name: toolman-linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
+            name: toolman-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
+            name: toolman-macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: toolman-windows-x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -473,14 +479,20 @@ jobs:
           shared-key: "rust-cache-mcp-proxy"
           cache-targets: true
 
+      - name: Install cross-compilation tools (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib
+
       - name: Build release binaries
         run: |
           echo "🏗️ Building for ${{ matrix.target }}..."
           cargo build --release --target ${{ matrix.target }}
           cargo build --release --bin toolman-http --target ${{ matrix.target }}
 
-      - name: Package binaries
-        shell: bash
+      - name: Package binaries (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/toolman" "dist/"
@@ -494,11 +506,36 @@ jobs:
           tar czf ../toolman-${{ matrix.target }}.tar.gz *
           cd ..
 
+          # Generate checksum
+          shasum -a 256 toolman-${{ matrix.target }}.tar.gz > toolman-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Package binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "target\${{ matrix.target }}\release\toolman.exe" "dist\"
+          Copy-Item "target\${{ matrix.target }}\release\toolman-http.exe" "dist\"
+
+          # Copy configuration files
+          Copy-Item "servers-config.json" "dist\servers-config.example.json"
+
+          # Create archive
+          Set-Location dist
+          tar czf ..\toolman-${{ matrix.target }}.tar.gz *
+          Set-Location ..
+
+          # Generate checksum
+          $hash = Get-FileHash toolman-${{ matrix.target }}.tar.gz -Algorithm SHA256
+          "$($hash.Hash.ToLower())  toolman-${{ matrix.target }}.tar.gz" | Out-File -FilePath "toolman-${{ matrix.target }}.tar.gz.sha256" -Encoding ASCII
+
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: toolman-${{ matrix.target }}
-          path: toolman-${{ matrix.target }}.tar.gz
+          name: ${{ matrix.name }}
+          path: |
+            toolman-${{ matrix.target }}.tar.gz
+            toolman-${{ matrix.target }}.tar.gz.sha256
 
   # Build and push Docker image
   build-docker:
@@ -626,12 +663,21 @@ jobs:
         with:
           version: '3.14.0'
 
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.30.0'
+
       - name: Configure kubectl
         run: |
-          echo "🔧 Configuring kubectl..."
-          # Add your cluster configuration here
-          # Example:
-          # echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          echo "🔧 Configuring kubectl with cluster credentials..."
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+          # Verify connection
+          kubectl cluster-info
+          kubectl get nodes
 
       - name: Deploy to development
         run: |
@@ -654,6 +700,20 @@ jobs:
 
           echo "✅ Development deployment completed"
 
+      - name: Show deployment status
+        if: always()
+        run: |
+          echo "📊 Deployment Status:"
+          kubectl get all -n mcp-proxy-dev
+
+          echo ""
+          echo "📋 Recent events:"
+          kubectl get events -n mcp-proxy-dev --sort-by='.lastTimestamp' | tail -10
+
+          echo ""
+          echo "🔗 Access Information:"
+          kubectl get svc -n mcp-proxy-dev
+
   # Create release (only for tags)
   release:
     needs: [version, build-binaries, build-docker, package-helm]
@@ -667,63 +727,155 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
 
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat << 'EOF' > release_notes.md
+          # MCP Bridge Proxy v${{ needs.version.outputs.version }}
+
+          Dynamic tool management for MCP (Model Context Protocol) servers with enhanced multi-project support.
+
+          ## 🚀 Features
+
+          - **Multi-Project Support**: Per-project tool configuration and management
+          - **HTTP Server**: Centralized tool management with REST API
+          - **25+ MCP Servers**: Support for 278+ tools across various domains
+          - **Dynamic Configuration**: Enable/disable tools at runtime
+          - **Persistent Storage**: Configuration management and caching
+          - **Cross-Platform**: Native binaries for Linux, macOS, and Windows
+
+          ## 📦 Quick Installation
+
+          ### One-Line Install (Recommended)
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
+          ```
+
+          ### Manual Download
+
+          | Platform | Architecture | Download |
+          |----------|--------------|----------|
+          | Linux | x86_64 | [toolman-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-unknown-linux-gnu.tar.gz) |
+          | macOS | x86_64 (Intel) | [toolman-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-apple-darwin.tar.gz) |
+          | macOS | aarch64 (M1/M2) | [toolman-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-aarch64-apple-darwin.tar.gz) |
+          | Windows | x86_64 | [toolman-x86_64-pc-windows-msvc.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-pc-windows-msvc.tar.gz) |
+
+          ### Verify Downloads
+          All binaries include SHA256 checksums for verification:
+          ```bash
+          # Example for macOS ARM64
+          shasum -a 256 -c toolman-aarch64-apple-darwin.tar.gz.sha256
+          ```
+
+          ## 🐳 Container Images
+
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}`
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
+
+          ```bash
+          docker run -p 3000:3000 -v ./servers-config.json:/config/servers-config.json:ro ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
+          ```
+
+          ## ⚓ Kubernetes Deployment
+
+          ### Helm Chart
+          - `mcp-proxy-${{ needs.version.outputs.version }}.tgz`
+
+          ```bash
+          # Install with Helm
+          helm install mcp-proxy https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/mcp-proxy-${{ needs.version.outputs.version }}.tgz
+
+          # Or add repository
+          helm repo add mcp-proxy https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/
+          helm install mcp-proxy mcp-proxy/mcp-proxy --version ${{ needs.version.outputs.version }}
+          ```
+
+          ## 🔧 Configuration
+
+          ### Cursor IDE Integration
+          The installer automatically configures Cursor. Manual configuration:
+
+          ```json
+          {
+            "mcpServers": {
+              "mcp-proxy": {
+                "command": "/path/to/toolman",
+                "args": []
+              }
+            }
+          }
+          ```
+
+          ### MCP Server Configuration
+          ```bash
+          # Copy example configuration
+          cp servers-config.example.json servers-config.json
+
+          # Edit to enable/configure MCP servers
+          # Available servers: filesystem, github, brave-search, fetch, postgres, and more
+          ```
+
+          ## 📖 Usage
+
+          ### Command Line Interface
+          ```bash
+          # List available MCP servers
+          toolman --list-servers
+
+          # Enable/disable servers
+          toolman --enable filesystem --disable brave-search
+
+          # Run as stdio server (for Cursor)
+          toolman
+          ```
+
+          ### HTTP Server
+          ```bash
+          # Start HTTP server
+          toolman-http --port 3000 --project-dir .
+
+          # Access management interface
+          curl http://localhost:3000/tools
+          ```
+
+          ## 🔄 Upgrading
+
+          Re-run the installation script or download the new binary:
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
+          ```
+
+          ## 📊 Checksums
+
+          All binaries include SHA256 checksums for security verification. See the `.sha256` files in the release assets.
+
+          ## 🆘 Support
+
+          - 📖 [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
+          - 🐛 [Issues](https://github.com/${{ github.repository }}/issues)
+          - 💬 [Discussions](https://github.com/${{ github.repository }}/discussions)
+          - 🚀 [Deployment Guide](https://github.com/${{ github.repository }}/blob/main/docs/DEPLOYMENT.md)
+
+          ---
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ needs.version.outputs.version }}...v${{ needs.version.outputs.version }}
+          EOF
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.version.outputs.version }}
-          name: Release ${{ needs.version.outputs.version }}
+          name: MCP Bridge Proxy v${{ needs.version.outputs.version }}
+          body_path: release_notes.md
           draft: false
           prerelease: false
           files: |
             toolman-*/toolman-*.tar.gz
+            toolman-*/toolman-*.tar.gz.sha256
             helm-chart/*.tgz
             helm-chart/index.yaml
-          body: |
-            # Toolman (MCP Bridge Proxy) Release ${{ needs.version.outputs.version }}
-
-            ## What's New
-            - Multi-project support with per-project tool configuration
-            - HTTP server for centralized tool management
-            - Support for 25+ MCP servers with 278+ tools
-            - Dynamic tool enable/disable at runtime
-            - Persistent configuration management
-
-            ## Container Images
-
-            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}`
-            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
-
-            ## Helm Chart
-
-            - `mcp-proxy-${{ needs.version.outputs.version }}.tgz`
-
-            ## Installation
-
-            ### Binary Installation
-            1. Download the appropriate binary for your platform
-            2. Extract the archive
-            3. Copy `servers-config.example.json` to `servers-config.json` and customize
-            4. Run `toolman-http` to start the HTTP server
-            5. Configure your IDE to use the stdio wrapper
-
-            ### Docker Installation
-            ```bash
-            docker run -p 3000:3000 -v ./servers-config.json:/config/servers-config.json:ro ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
-            ```
-
-            ### Helm Installation
-            ```bash
-            # Add the chart repository
-            helm repo add mcp-proxy https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/
-
-            # Install the chart
-            helm install mcp-proxy mcp-proxy/mcp-proxy --version ${{ needs.version.outputs.version }}
-
-            # Or install directly from the release
-            helm install mcp-proxy https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/mcp-proxy-${{ needs.version.outputs.version }}.tgz
-            ```
-
-            See README and chart documentation for detailed setup instructions.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Deployment summary
   deployment-summary:

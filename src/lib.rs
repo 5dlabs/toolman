@@ -24,9 +24,6 @@ pub mod context;
 // Configuration management
 pub mod config;
 
-// Services
-pub mod services;
-
 // Re-export key types from stdio_wrapper for convenience
 pub use context::{ContextConfig, ContextManager};
 pub use stdio_wrapper::StdioWrapper;
