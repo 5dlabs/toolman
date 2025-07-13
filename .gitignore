@@ -4,7 +4,6 @@
 
 # Rust builds
 target/
-Cargo.lock
 
 
 # Node.js
