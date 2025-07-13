@@ -73,43 +73,7 @@ impl ContextConfig {
         None
     }
 
-    /// Enable a tool in this context
-    pub fn enable_tool(&mut self, server_name: &str, tool_name: &str) {
-        // Remove from disabled if present
-        if let Some(disabled_tools) = self.disabled_tools.get_mut(server_name) {
-            disabled_tools.retain(|t| t != tool_name);
-            if disabled_tools.is_empty() {
-                self.disabled_tools.remove(server_name);
-            }
-        }
 
-        // Add to enabled
-        self.enabled_tools
-            .entry(server_name.to_string())
-            .or_insert_with(Vec::new)
-            .push(tool_name.to_string());
-
-        self.touch();
-    }
-
-    /// Disable a tool in this context
-    pub fn disable_tool(&mut self, server_name: &str, tool_name: &str) {
-        // Remove from enabled if present
-        if let Some(enabled_tools) = self.enabled_tools.get_mut(server_name) {
-            enabled_tools.retain(|t| t != tool_name);
-            if enabled_tools.is_empty() {
-                self.enabled_tools.remove(server_name);
-            }
-        }
-
-        // Add to disabled
-        self.disabled_tools
-            .entry(server_name.to_string())
-            .or_insert_with(Vec::new)
-            .push(tool_name.to_string());
-
-        self.touch();
-    }
 }
 
 /// Context manager for handling user-specific tool configurations
@@ -197,23 +161,7 @@ impl ContextManager {
         Ok(())
     }
 
-    /// Enable a tool in the current context
-    pub fn enable_tool(&mut self, server_name: &str, tool_name: &str) -> Result<()> {
-        if let Some(ref mut context) = self.current_context {
-            context.enable_tool(server_name, tool_name);
-            self.save_context()?;
-        }
-        Ok(())
-    }
 
-    /// Disable a tool in the current context
-    pub fn disable_tool(&mut self, server_name: &str, tool_name: &str) -> Result<()> {
-        if let Some(ref mut context) = self.current_context {
-            context.disable_tool(server_name, tool_name);
-            self.save_context()?;
-        }
-        Ok(())
-    }
 
     /// Check if a tool should be enabled based on context and default config
     /// Returns: Some(true) = force enabled, Some(false) = force disabled, None = use default

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  mcp-proxy:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./servers-config.json:/config/servers-config.json:ro
+      - ./test-servers-config.json:/config/test-servers-config.json:ro
+    environment:
+      - PORT=3000
+      - PROJECT_DIR=/config
+      # Uncomment to enable debug logging
+      # - RUST_LOG=debug
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/mcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

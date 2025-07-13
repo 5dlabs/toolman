@@ -1,0 +1,14 @@
+target/
+Dockerfile
+.dockerignore
+.git/
+.gitignore
+*.md
+.github/
+scripts/
+tests/
+docs/
+.taskmaster/
+*.log
+.mcp-bridge-proxy-config.json
+.DS_Store

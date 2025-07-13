@@ -603,6 +603,8 @@ pub struct BridgeState {
     current_working_dir: Arc<RwLock<Option<std::path::PathBuf>>>,
     // Current user configuration (per-request)
     user_config: Arc<RwLock<UserConfig>>,
+    // Agent header name for per-session isolation
+    agent_header_name: String,
 }
 
 // JSON-RPC 2.0 message types
@@ -693,14 +695,21 @@ impl UserConfig {
         self.enabled_tools.get(tool_name).copied()
     }
 
-    /// Enable a tool for the user
-    fn enable_tool(&mut self, tool_name: &str) {
-        self.enabled_tools.insert(tool_name.to_string(), true);
-    }
 
-    /// Disable a tool for the user
-    fn disable_tool(&mut self, tool_name: &str) {
-        self.enabled_tools.insert(tool_name.to_string(), false);
+
+    fn load_from_file(config_file: &std::path::Path) -> Result<Self> {
+        if config_file.exists() {
+            let content = std::fs::read_to_string(config_file)?;
+            let mut config: UserConfig = serde_json::from_str(&content)?;
+            if config.last_updated.is_empty() {
+                config.last_updated = chrono::Utc::now().to_rfc3339();
+            }
+            println!("📂 Loaded user config from: {}", config_file.display());
+            Ok(config)
+        } else {
+            println!("📂 No user config found, creating new one at: {}", config_file.display());
+            Ok(Self::new())
+        }
     }
 }
 
@@ -731,6 +740,9 @@ impl BridgeState {
             .map_err(|e| anyhow::anyhow!("Failed to initialize context manager: {}", e))?;
         let context_manager = Arc::new(RwLock::new(context_manager_instance));
 
+        // Agent header name for per-session isolation
+        let agent_header_name = std::env::var("AGENT_HEADER_NAME").unwrap_or("X-Agent-ID".to_string());
+
         Ok(Self {
             system_config_manager,
             available_tools: Arc::new(RwLock::new(HashMap::new())),
@@ -739,6 +751,7 @@ impl BridgeState {
             project_dir,
             current_working_dir: Arc::new(RwLock::new(None)),
             user_config: Arc::new(RwLock::new(UserConfig::new())),
+            agent_header_name,
         })
     }
 
@@ -782,8 +795,21 @@ impl BridgeState {
             *current_wd = Some(working_dir.clone());
         }
 
-        // Load user config from project directory
-        let user_config = UserConfig::load_from_project(&working_dir)?;
+        // Extract agent ID from configurable header
+        let agent_id = request_headers.and_then(|headers| {
+            headers.get(&self.agent_header_name)
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        });
+
+        let config_file = match agent_id {
+            Some(id) => working_dir.join(format!(".mcp-bridge-proxy-config-{}.json", id)),
+            None => working_dir.join(".mcp-bridge-proxy-config.json"),
+        };
+
+        println!("🔍 Loading user config from: {}", config_file.display());
+
+        let user_config = UserConfig::load_from_file(&config_file)?;
 
         // Store the loaded user config
         {
@@ -812,66 +838,6 @@ impl BridgeState {
         }
     }
 
-    pub async fn discover_and_enable_tools(&self) -> anyhow::Result<()> {
-        // SYSTEM-LEVEL DISCOVERY: Start all servers and discover all tools
-        // Do NOT load user context here - this is system-level operation
-        println!("🏗️ Starting system-level tool discovery (no user context)");
-
-        let config_manager = self.system_config_manager.read().await;
-        let servers = config_manager.get_servers();
-        let mut available_tools = self.available_tools.write().await;
-
-        println!(
-            "🔍 Discovering tools from {} configured servers...",
-            servers.len()
-        );
-
-        for (server_name, config) in servers.iter() {
-            match self.discover_server_tools(server_name, config).await {
-                Ok(tools) => {
-                    println!(
-                        "✅ Discovered {} tools from server '{}'",
-                        tools.len(),
-                        server_name
-                    );
-
-                    for tool in tools {
-                        // Add to available tools (system-level registry)
-                        available_tools.insert(tool.name.clone(), tool.clone());
-                        println!(
-                            "📋 Registered tool '{}' from server '{}' (system-level)",
-                            tool.name, server_name
-                        );
-                    }
-                }
-                Err(e) => {
-                    println!(
-                        "⚠️  Failed to discover tools from server '{}': {}",
-                        server_name, e
-                    );
-                    // Continue with other servers - don't fail completely
-                }
-            }
-        }
-
-        println!("📊 Total tools discovered: {}", available_tools.len());
-        println!("🎯 System-level discovery complete. All tools default to DISABLED.");
-        println!("💡 User contexts will determine which tools are visible per project.");
-
-        // DEBUG: Show tool discovery summary
-        println!(
-            "🔍 DEBUG: Available tools summary: {} tools discovered",
-            available_tools.len()
-        );
-
-        // Note: available_tools now contains all discovered tools (system-level registry)
-        // Tool enabling is now done per-request based on user context
-        println!(
-            "🧹 System-level tool registry complete - using context-based filtering for visibility"
-        );
-
-        Ok(())
-    }
 
     /// Determine if a tool should be enabled based on context preferences
     /// SYSTEM vs USER CONFIG ARCHITECTURE:
@@ -1503,43 +1469,8 @@ impl BridgeState {
 
                 let mut all_tools = vec![
                     json!({
-                        "name": "enable_tool",
-                        "description": "🔧 Enable a specific tool from any server",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "server_name": {"type": "string", "description": "Name of the server containing the tool"},
-                                "tool_name": {"type": "string", "description": "Name of the tool to enable"}
-                            },
-                            "required": ["server_name", "tool_name"]
-                        }
-                    }),
-                    json!({
-                        "name": "disable_tool",
-                        "description": "❌ Disable a specific tool",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "server_name": {"type": "string", "description": "Name of the server containing the tool"},
-                                "tool_name": {"type": "string", "description": "Name of the tool to disable"}
-                            },
-                            "required": ["server_name", "tool_name"]
-                        }
-                    }),
-                    json!({
-                        "name": "save_config",
-                        "description": "💾 Persist ephemeral changes to servers-config.json",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "restart_proxy": {"type": "boolean", "description": "Whether to restart the proxy after saving (default: true)"}
-                            },
-                            "required": []
-                        }
-                    }),
-                    json!({
                         "name": "suggest_tools_for_tasks",
-                        "description": "🤖 Analyze TaskMaster tasks and suggest appropriate MCP tools to enable based on task descriptions and requirements",
+                        "description": "🤖 Analyze TaskMaster tasks and suggest appropriate MCP tools based on task descriptions and requirements",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -1556,11 +1487,6 @@ impl BridgeState {
                                             "subtasks": { "type": "array" }
                                         }
                                     }
-                                },
-                                "auto_enable": {
-                                    "type": "boolean",
-                                    "description": "If true, automatically enable suggested tools with high confidence (>0.8)",
-                                    "default": false
                                 }
                             },
                             "required": ["tasks"]
@@ -1568,9 +1494,10 @@ impl BridgeState {
                     }),
                 ];
 
-                // Add context-filtered tools with server name prefixes
+                // Add tools based on static configuration
                 let available_tools = self.available_tools.read().await;
-                let user_config = self.user_config.read().await;
+                let config_manager = self.system_config_manager.read().await;
+                let servers = config_manager.get_servers();
 
                 println!(
                     "🔍 DEBUG: Starting tool filtering with {} available tools",
@@ -1581,27 +1508,35 @@ impl BridgeState {
                     // Create the prefixed tool name as it appears to users
                     let prefixed_tool_name = format!("{}_{}", tool.server_name, tool.name);
 
-                    // Check if this tool should be enabled based on user config ONLY
-                    // No fallback to old ContextManager system - default to false for security
-                    let user_preference = user_config.is_tool_enabled(&prefixed_tool_name);
-                    println!(
-                        "🔍 DEBUG: Tool {} - User preference: {:?}",
-                        prefixed_tool_name, user_preference
-                    );
-
-                    let should_enable = if let Some(user_preference) = user_preference {
-                        // User has explicit preference - use it
-                        println!(
-                            "🔍 DEBUG: Using user preference for {}: {}",
-                            prefixed_tool_name, user_preference
-                        );
-                        user_preference
+                    // Check if this tool should be enabled based on static config
+                    let should_enable = if let Some(server_config) = servers.get(&tool.server_name) {
+                        // First check if the server itself is enabled
+                        if !server_config.enabled {
+                            println!(
+                                "🔍 DEBUG: Tool {} - Server {} is disabled",
+                                prefixed_tool_name, tool.server_name
+                            );
+                            false
+                        } else if let Some(tool_config) = server_config.tools.get(&tool.name) {
+                            // If there's a specific tool config, use it
+                            println!(
+                                "🔍 DEBUG: Tool {} - Static config enabled: {}",
+                                prefixed_tool_name, tool_config.enabled
+                            );
+                            tool_config.enabled
+                        } else {
+                            // If no specific tool config, default to true (all tools enabled for enabled servers)
+                            println!(
+                                "🔍 DEBUG: Tool {} - No specific config, defaulting to enabled",
+                                prefixed_tool_name
+                            );
+                            true
+                        }
                     } else {
-                        // No user preference - DEFAULT TO FALSE (secure by default)
-                        // This eliminates the old ContextManager fallback that caused cross-contamination
+                        // Server not found in config - shouldn't happen
                         println!(
-                            "🔍 DEBUG: No user preference for {} - defaulting to FALSE",
-                            prefixed_tool_name
+                            "🔍 DEBUG: Tool {} - Server {} not found in config",
+                            prefixed_tool_name, tool.server_name
                         );
                         false
                     };
@@ -1631,64 +1566,6 @@ impl BridgeState {
                 if let Some(params) = request.params {
                     if let Some(tool_name) = params.get("name").and_then(|v| v.as_str()) {
                         let result = match tool_name {
-                            "enable_tool" => {
-                                if let Some(args) = params.get("arguments") {
-                                    if let (Some(server_name), Some(tool_name)) = (
-                                        args.get("server_name").and_then(|v| v.as_str()),
-                                        args.get("tool_name").and_then(|v| v.as_str()),
-                                    ) {
-                                        self.enable_tool(server_name, tool_name, headers).await
-                                    } else {
-                                        json!({
-                                            "content": [{
-                                                "type": "text",
-                                                "text": "❌ Missing server_name or tool_name parameter"
-                                            }]
-                                        })
-                                    }
-                                } else {
-                                    json!({
-                                        "content": [{
-                                            "type": "text",
-                                            "text": "❌ No arguments provided"
-                                        }]
-                                    })
-                                }
-                            }
-                            "disable_tool" => {
-                                if let Some(args) = params.get("arguments") {
-                                    if let (Some(server_name), Some(tool_name)) = (
-                                        args.get("server_name").and_then(|v| v.as_str()),
-                                        args.get("tool_name").and_then(|v| v.as_str()),
-                                    ) {
-                                        self.disable_tool(server_name, tool_name, headers).await
-                                    } else {
-                                        json!({
-                                            "content": [{
-                                                "type": "text",
-                                                "text": "❌ Missing server_name or tool_name parameter"
-                                            }]
-                                        })
-                                    }
-                                } else {
-                                    json!({
-                                        "content": [{
-                                            "type": "text",
-                                            "text": "❌ No arguments provided"
-                                        }]
-                                    })
-                                }
-                            }
-                            "save_config" => {
-                                let restart_proxy = if let Some(args) = params.get("arguments") {
-                                    args.get("restart_proxy")
-                                        .and_then(|v| v.as_bool())
-                                        .unwrap_or(true)
-                                } else {
-                                    true
-                                };
-                                self.save_config(restart_proxy).await
-                            }
                             "suggest_tools_for_tasks" => {
                                 if let Some(args) = params.get("arguments") {
                                     let tasks = args.get("tasks").ok_or_else(|| {
@@ -1697,83 +1574,22 @@ impl BridgeState {
 
                                     match tasks {
                                         Ok(tasks) => {
-                                            let auto_enable = args
-                                                .get("auto_enable")
-                                                .and_then(|v| v.as_bool())
-                                                .unwrap_or(false);
-
                                             // Create tool suggester
                                             let suggester = ToolSuggester::new();
 
                                             // Analyze tasks
                                             match suggester.analyze_tasks(tasks) {
                                                 Ok(analyses) => {
-                                                    // If auto_enable is true, enable high-confidence suggestions
-                                                    let mut enabled_tools = Vec::new();
-                                                    if auto_enable {
-                                                        for analysis in &analyses {
-                                                            for suggestion in
-                                                                &analysis.suggested_tools
-                                                            {
-                                                                if suggestion.confidence > 0.8 {
-                                                                    // Try to enable the tool
-                                                                    let enable_result = self
-                                                                        .enable_tool(
-                                                                            &suggestion.server_name,
-                                                                            &suggestion.tool_name,
-                                                                            headers,
-                                                                        )
-                                                                        .await;
-
-                                                                    // Check if enable was successful
-                                                                    if let Some(content) =
-                                                                        enable_result.get("content")
-                                                                    {
-                                                                        if let Some(text_obj) =
-                                                                            content.get(0)
-                                                                        {
-                                                                            if let Some(text) =
-                                                                                text_obj
-                                                                                    .get("text")
-                                                                                    .and_then(|t| {
-                                                                                        t.as_str()
-                                                                                    })
-                                                                            {
-                                                                                if text.contains("✅ Enabled tool") {
-                                                                                    enabled_tools.push(format!(
-                                                                                        "{}_{}",
-                                                                                        suggestion.server_name,
-                                                                                        suggestion.tool_name
-                                                                                    ));
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-
                                                     // Return analysis results
                                                     json!({
                                                         "content": [{
                                                             "type": "text",
                                                             "text": format!(
-                                                                "📊 Task Analysis Complete!\n\n{}\n\n{}\n\n{}",
+                                                                "📊 Task Analysis Complete!\n\n{}\n\n{}",
                                                                 format!("Analyzed {} tasks with {} total tool suggestions",
                                                                     analyses.len(),
                                                                     analyses.iter().map(|a| a.suggested_tools.len()).sum::<usize>()
                                                                 ),
-                                                                if !enabled_tools.is_empty() {
-                                                                    format!("✅ Auto-enabled {} high-confidence tools:\n{}\n\n🔄 **IMPORTANT**: Ask \"Should I continue?\" to refresh the UI and see the newly enabled tools.",
-                                                                        enabled_tools.len(),
-                                                                        enabled_tools.iter().map(|t| format!("  - {}", t)).collect::<Vec<_>>().join("\n")
-                                                                    )
-                                                                } else if auto_enable {
-                                                                    "ℹ️ No tools met the auto-enable confidence threshold (>0.8)".to_string()
-                                                                } else {
-                                                                    "💡 Review the suggestions below and use enable_tool to enable the tools you need.".to_string()
-                                                                },
                                                                 format!("📋 Detailed Analysis:\n{}",
                                                                     serde_json::to_string_pretty(&analyses).unwrap_or_else(|_| "Error formatting analysis".to_string())
                                                                 )
@@ -1946,155 +1762,7 @@ impl BridgeState {
         }
     }
 
-    async fn enable_tool(
-        &self,
-        server_name: &str,
-        tool_name: &str,
-        headers: Option<&axum::http::HeaderMap>,
-    ) -> Value {
-        // Log all headers for debugging
-        if let Some(headers) = headers {
-            eprintln!("🔍 DEBUG: Headers received in enable_tool:");
-            for (name, value) in headers.iter() {
-                if let Ok(v) = value.to_str() {
-                    eprintln!("  {}: {}", name, v);
-                }
-            }
-        } else {
-            eprintln!("🔍 DEBUG: No headers received in enable_tool");
-        }
 
-        // Detect client type from User-Agent header
-        let (is_cursor, client_name) = if let Some(headers) = headers {
-            headers.get("user-agent")
-                .and_then(|ua| ua.to_str().ok())
-                .map(|ua| {
-                    let ua_lower = ua.to_lowercase();
-                    eprintln!("🔍 DEBUG: User-Agent detected: {}", ua);
-                    let is_cursor = ua_lower.contains("cursor");
-                    let client = if is_cursor { "Cursor" } else { "Claude Code" };
-                    (is_cursor, client)
-                })
-                .unwrap_or((false, "Claude Code"))
-        } else {
-            (false, "Claude Code")
-        };
-
-        // Load current user context
-        if let Err(e) = self.load_user_context(headers).await {
-            return json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("❌ Failed to load user context: {}", e)
-                }]
-            });
-        }
-
-        // Create the prefixed tool name as it appears to users
-        let prefixed_tool_name = format!("{}_{}", server_name, tool_name);
-
-        // Get current working directory and update user config
-        let working_dir = {
-            let wd = self.current_working_dir.read().await;
-            wd.clone()
-        };
-
-        if let Some(working_dir) = working_dir {
-            // Update user config
-            {
-                let mut user_config = self.user_config.write().await;
-                user_config.enable_tool(&prefixed_tool_name);
-
-                // Save to project directory
-                if let Err(e) = user_config.save_to_project(&working_dir) {
-                    return json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("❌ Failed to save user config: {}", e)
-                        }]
-                    });
-                }
-            }
-
-            let refresh_message = if is_cursor {
-                format!("\n\n🔄 **IMPORTANT**: Due to a Cursor UI refresh bug, new tools won't appear until you send another message. Please ask your user \"Should I continue?\" or similar to trigger the context refresh - this will make the new tool available immediately!")
-            } else {
-                format!("\n\n✨ Tool enabled successfully in {}! The tool should now be available for use.", client_name)
-            };
-
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("✅ Enabled tool '{}' from server '{}'!\n\n📁 Project: {}\n💾 Preference saved to: {}/.mcp-bridge-proxy-config.json{}", prefixed_tool_name, server_name, working_dir.display(), working_dir.display(), refresh_message)
-                }]
-            })
-        } else {
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": "❌ No working directory available for saving user preferences"
-                }]
-            })
-        }
-    }
-
-    async fn disable_tool(
-        &self,
-        server_name: &str,
-        tool_name: &str,
-        headers: Option<&axum::http::HeaderMap>,
-    ) -> Value {
-        // Load current user context
-        if let Err(e) = self.load_user_context(headers).await {
-            return json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("❌ Failed to load user context: {}", e)
-                }]
-            });
-        }
-
-        // Create the prefixed tool name as it appears to users
-        let prefixed_tool_name = format!("{}_{}", server_name, tool_name);
-
-        // Get current working directory and update user config
-        let working_dir = {
-            let wd = self.current_working_dir.read().await;
-            wd.clone()
-        };
-
-        if let Some(working_dir) = working_dir {
-            // Update user config
-            {
-                let mut user_config = self.user_config.write().await;
-                user_config.disable_tool(&prefixed_tool_name);
-
-                // Save to project directory
-                if let Err(e) = user_config.save_to_project(&working_dir) {
-                    return json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("❌ Failed to save user config: {}", e)
-                        }]
-                    });
-                }
-            }
-
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("✅ Disabled tool '{}' from server '{}'!\n\n📁 Project: {}\n💾 Preference saved to: {}/.mcp-bridge-proxy-config.json\n\nThe tool is now hidden and will not appear in your available tools list.", prefixed_tool_name, server_name, working_dir.display(), working_dir.display())
-                }]
-            })
-        } else {
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": "❌ No working directory available for saving user preferences"
-                }]
-            })
-        }
-    }
 
     async fn discover_available_tools_tool(&self, include_descriptions: bool) -> Value {
         let config_manager = self.system_config_manager.read().await;
@@ -2148,66 +1816,6 @@ impl BridgeState {
         })
     }
 
-    async fn save_config(&self, restart_proxy: bool) -> Value {
-        match self.save_config_impl(restart_proxy).await {
-            Ok(message) => json!({
-                "content": [{
-                    "type": "text",
-                    "text": message
-                }]
-            }),
-            Err(e) => json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("❌ Failed to save config: {}", e)
-                }]
-            }),
-        }
-    }
-
-    async fn save_config_impl(&self, restart_proxy: bool) -> anyhow::Result<String> {
-        // Get current working directory
-        let working_dir = {
-            let wd = self.current_working_dir.read().await;
-            wd.clone()
-        };
-
-        let working_dir = working_dir.ok_or_else(|| {
-            anyhow::anyhow!("No working directory available for saving user config")
-        })?;
-
-        // Save current user config to project directory
-        {
-            let mut user_config = self.user_config.write().await;
-            user_config.save_to_project(&working_dir)?;
-        }
-
-        let config_file = working_dir.join(".mcp-bridge-proxy-config.json");
-
-        // Count enabled tools
-        let enabled_count = {
-            let user_config = self.user_config.read().await;
-            user_config
-                .enabled_tools
-                .values()
-                .filter(|&&enabled| enabled)
-                .count()
-        };
-
-        let message = format!(
-            "✅ Configuration saved successfully!\n\n📁 Project: {}\n💾 Config file: {}\n Enabled tools: {}\n\n💡 **Note**: This saves your personal tool preferences for this project. The system configuration remains unchanged, allowing other users to have their own preferences.\n\n{}",
-            working_dir.display(),
-            config_file.display(),
-            enabled_count,
-            if restart_proxy {
-                "🔄 Proxy restart requested but not needed - user preferences are applied immediately."
-            } else {
-                "✨ Your tool preferences are now persistent and will be restored when you return to this project."
-            }
-        );
-
-        Ok(message)
-    }
 
     async fn add_server(&self, repo_url: &str) -> Value {
         // TODO: Implement intelligent server addition
@@ -2353,9 +1961,6 @@ async fn main() -> Result<()> {
     println!("🔍 End Environment Variables\n");
 
     let state = BridgeState::new(args.project_dir)?;
-
-    // Discover all available tools and enable those marked in config
-    state.discover_and_enable_tools().await?;
 
     let app = Router::new()
         .route("/mcp", post(mcp_endpoint))

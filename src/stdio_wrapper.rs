@@ -232,8 +232,7 @@ impl StdioWrapper {
                 let result = self.rt.block_on(async {
                     match tool_name {
                         Some("enable_server") => self.handle_enable_server(request).await,
-                        Some("add_tool") | Some("remove_tool") | Some("enable_tool")
-                        | Some("disable_tool") => self.handle_tool_change(request).await,
+                        Some("add_tool") | Some("remove_tool") => self.handle_tool_change(request).await,
                         _ => self.forward_tool_call(request).await,
                     }
                 });
