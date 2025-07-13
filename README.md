@@ -1,8 +1,8 @@
 # 🛠️ Toolman
 
-**Your ultimate tool companion for MCP (Model Context Protocol) servers**
+**Smart MCP tool management for AI development**
 
-Toolman is a production-grade Rust HTTP server that provides intelligent MCP server and tool management for Cursor IDE and Claude Code. It acts as a centralized proxy that manages multiple MCP servers with static configuration-based tool exposure.
+Toolman is a high-performance Rust proxy that manages multiple MCP (Model Context Protocol) servers, giving you precise control over which tools are available to your AI assistants.
 
 [![Rust](https://img.shields.io/badge/rust-1.79+-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,37 +10,21 @@ Toolman is a production-grade Rust HTTP server that provides intelligent MCP ser
 
 ## 🎯 What is Toolman?
 
-Toolman solves the **tool overwhelm problem** in AI development environments. Instead of being flooded with hundreds of tools from dozens of MCP servers, Toolman lets you:
+When working with AI assistants like Claude or Cursor, you often need different tools for different projects. Toolman acts as a smart gateway that:
 
-- **Selectively expose** only the tools you need through static configuration
-- **Configure tool availability** per server and per tool in `servers-config.json`
-- **Manage multiple projects** with different tool configurations
-- **Run in containers** with Docker and Kubernetes support
+- **Consolidates multiple MCP servers** into a single endpoint
+- **Filters tools** to show only what you need for your current project
+- **Manages tool access** with fine-grained control per server and per tool
+- **Runs anywhere** - locally, in Docker, or on Kubernetes
 
 ## ✨ Key Features
 
-### 🎛️ Static Configuration
-- Tools are enabled/disabled through `servers-config.json`
-- Fine-grained control: enable servers and specific tools within them
-- No runtime configuration changes - restart to apply new settings
-- Secure by default: only explicitly enabled tools are exposed
-
-### 🏗️ Architecture
-- Single HTTP endpoint that proxies to multiple MCP servers
-- Stateless design - configuration is loaded from file
-- Multi-platform Docker images (amd64/arm64)
-- Kubernetes-ready with ConfigMap support
-
-### 🔧 Integrated MCP Servers
-Supporting 25+ MCP servers with hundreds of tools:
-- **Filesystem** - Local file operations
-- **GitHub** - Repository management, issues, PRs
-- **Git** - Version control operations
-- **Memory** - Knowledge graph and persistent storage
-- **PostgreSQL** - Database operations
-- **Docker** - Container management
-- **Time** - Time and timezone operations
-- And many more...
+- 🎛️ **Selective Tool Exposure** - Enable only the tools you need
+- 🏗️ **Multi-Server Support** - Connect to 25+ MCP servers through one endpoint
+- 🔧 **Fine-Grained Control** - Enable/disable individual tools within servers
+- 🐳 **Container Ready** - Multi-platform Docker images (amd64/arm64)
+- ⚡ **High Performance** - Built in Rust for speed and reliability
+- 🔒 **Secure by Default** - Only explicitly enabled tools are exposed
 
 ## 🚀 Quick Start
 
@@ -85,19 +69,16 @@ cargo build --release
 ./target/release/toolman-http --project-dir $(pwd) --port 3000
 ```
 
-### Configure Your IDE
+### Configure Your AI Assistant
 
-For Cursor IDE, add to your `.cursorrules` or configure the MCP client:
 ```bash
-# Using Claude CLI
+# For Claude Desktop or Cursor
 claude mcp add --transport http toolman http://localhost:3000/mcp
 ```
 
 ## 📝 Configuration
 
-### Server Configuration (servers-config.json)
-
-Enable servers and specific tools:
+Configure which tools are available by editing `servers-config.json`:
 
 ```json
 {
@@ -105,37 +86,40 @@ Enable servers and specific tools:
     "filesystem": {
       "name": "Filesystem MCP Server",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/project"],
       "enabled": true,
       "tools": {
         "read_file": { "enabled": true },
         "write_file": { "enabled": true },
         "list_directory": { "enabled": true },
-        "move_file": { "enabled": false }
+        "move_file": { "enabled": false }  // Disabled for safety
       }
     },
-    "git": {
-      "name": "Git MCP Server",
-      "command": "uvx",
-      "args": ["mcp-server-git"],
-      "enabled": true,
-      "tools": {
-        "git_status": { "enabled": true },
-        "git_diff": { "enabled": true },
-        "git_commit": { "enabled": false }
-      }
+    "github": {
+      "name": "GitHub MCP Server",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "enabled": true
+      // No tools specified = all tools enabled
     }
   }
 }
 ```
 
-### Tool Behavior
+## 🔧 Supported MCP Servers
 
-- **Server disabled** (`enabled: false`): No tools from this server are available
-- **Server enabled, no tool config**: All tools from the server are available
-- **Server enabled with tool config**: Only explicitly enabled tools are available
+Toolman works with any MCP server, including:
+
+- **Development**: Git, GitHub, Filesystem
+- **Databases**: PostgreSQL, Redis
+- **Automation**: Browser/Playwright, Docker
+- **AI Tools**: Memory (knowledge graphs), Sequential Thinking
+- **Utilities**: Time zones, Fetch (HTTP requests)
+- And many more...
 
 ## 🐳 Kubernetes Deployment
+
+Deploy Toolman on Kubernetes using a ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -146,7 +130,12 @@ data:
   servers-config.json: |
     {
       "servers": {
-        # Your configuration here
+        "filesystem": {
+          "name": "Filesystem MCP Server",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+          "enabled": true
+        }
       }
     }
 ---
@@ -177,15 +166,45 @@ spec:
       - name: config
         configMap:
           name: mcp-proxy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-proxy
+spec:
+  selector:
+    app: mcp-proxy
+  ports:
+  - port: 3000
+    targetPort: 3000
 ```
 
-## 🔒 Security
+## 🎮 Usage Examples
 
-- Static configuration prevents runtime manipulation
-- Only explicitly enabled tools are exposed
-- No dynamic tool enabling/disabling
-- Runs as non-root user in containers
-- Read-only configuration mounting recommended
+### Web Development Project
+Enable only web-related tools:
+```json
+{
+  "servers": {
+    "filesystem": { "enabled": true },
+    "git": { "enabled": true },
+    "github": { "enabled": true },
+    "browser-mcp": { "enabled": true }
+  }
+}
+```
+
+### Data Science Project
+Enable data and computation tools:
+```json
+{
+  "servers": {
+    "filesystem": { "enabled": true },
+    "postgres": { "enabled": true },
+    "memory": { "enabled": true }
+  }
+}
+```
 
 ## 🤝 Contributing
 
