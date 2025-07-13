@@ -2,9 +2,9 @@ use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-use tokio::process::{Child, Command};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::{Mutex, RwLock};
 
 use crate::config::{ServerConfig, SystemConfigManager};
 
@@ -22,7 +22,10 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
-    pub fn new(startup_timeout: std::time::Duration, shutdown_timeout: std::time::Duration) -> Self {
+    pub fn new(
+        startup_timeout: std::time::Duration,
+        shutdown_timeout: std::time::Duration,
+    ) -> Self {
         Self {
             startup_timeout,
             shutdown_timeout,
@@ -76,9 +79,13 @@ impl ServerConnectionPool {
 
         let mut process = cmd.spawn()?;
 
-        let stdin = process.stdin.take()
+        let stdin = process
+            .stdin
+            .take()
             .ok_or_else(|| anyhow::anyhow!("Failed to get stdin"))?;
-        let stdout = process.stdout.take()
+        let stdout = process
+            .stdout
+            .take()
             .ok_or_else(|| anyhow::anyhow!("Failed to get stdout"))?;
 
         let reader = BufReader::new(stdout);
@@ -117,12 +124,14 @@ impl ServerConnectionPool {
 
         let connection = {
             let connections = self.connections.read().await;
-            connections.get(server_name).cloned()
+            connections
+                .get(server_name)
+                .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Server '{}' not connected", server_name))?
         };
 
         let mut conn = connection.lock().await;
-        
+
         // Send request
         let request_str = serde_json::to_string(&request)?;
         conn.stdin.write_all(request_str.as_bytes()).await?;

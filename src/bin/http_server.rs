@@ -679,37 +679,46 @@ impl BridgeState {
     /// Discover all available tools from all configured servers
     async fn discover_all_tools(&self) -> anyhow::Result<()> {
         println!("🔍 Discovering all available tools from configured servers...");
-        
+
         let config_manager = self.system_config_manager.read().await;
         let servers = config_manager.get_servers();
         let mut all_tools = HashMap::new();
-        
+
         for (server_name, config) in servers.iter() {
             if config.enabled {
                 println!("🔍 Discovering tools from server: {}", server_name);
                 match self.discover_server_tools(server_name, config).await {
                     Ok(tools) => {
-                        println!("✅ Discovered {} tools from server '{}'", tools.len(), server_name);
+                        println!(
+                            "✅ Discovered {} tools from server '{}'",
+                            tools.len(),
+                            server_name
+                        );
                         for tool in tools {
                             let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
                             all_tools.insert(prefixed_name, tool);
                         }
                     }
                     Err(e) => {
-                        eprintln!("⚠️ Failed to discover tools from server '{}': {}", server_name, e);
+                        eprintln!(
+                            "⚠️ Failed to discover tools from server '{}': {}",
+                            server_name, e
+                        );
                     }
                 }
             }
         }
-        
+
         // Store discovered tools
         let mut available_tools = self.available_tools.write().await;
         *available_tools = all_tools;
-        println!("✅ Tool discovery complete. Total tools available: {}", available_tools.len());
-        
+        println!(
+            "✅ Tool discovery complete. Total tools available: {}",
+            available_tools.len()
+        );
+
         Ok(())
     }
-
 
     // Discover tools from a single server (without "starting" it permanently)
     async fn discover_server_tools(
@@ -1302,7 +1311,9 @@ impl BridgeState {
                 error: None,
             },
             "tools/list" => {
-                println!("🔍 DEBUG: tools/list handler called - returning ALL tools without filtering");
+                println!(
+                    "🔍 DEBUG: tools/list handler called - returning ALL tools without filtering"
+                );
 
                 let mut all_tools = vec![json!({
                     "name": "suggest_tools_for_tasks",
@@ -1331,9 +1342,12 @@ impl BridgeState {
 
                 // Get ALL available tools without any filtering
                 let available_tools = self.available_tools.read().await;
-                
-                println!("🔍 Returning {} tools from all servers", available_tools.len());
-                
+
+                println!(
+                    "🔍 Returning {} tools from all servers",
+                    available_tools.len()
+                );
+
                 // Add ALL tools - no filtering
                 for (prefixed_tool_name, tool) in available_tools.iter() {
                     println!("✅ Including tool: {}", prefixed_tool_name);
@@ -1747,7 +1761,7 @@ async fn main() -> Result<()> {
     println!("🔍 End Environment Variables\n");
 
     let state = BridgeState::new(args.project_dir)?;
-    
+
     // Give the tool discovery a moment to start
     // In production, you might want to wait for discovery to complete
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

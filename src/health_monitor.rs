@@ -241,9 +241,7 @@ impl HealthMonitor {
                     ServerHealth::Degraded { .. } | ServerHealth::Unresponsive { .. } => {
                         status.health = ServerHealth::Healthy;
                         status.uptime_start = Some(Instant::now());
-                        println!(
-                            "✅ Server '{server_name}' has recovered and is now healthy"
-                        );
+                        println!("✅ Server '{server_name}' has recovered and is now healthy");
                     }
                     _ => {}
                 }
@@ -292,9 +290,7 @@ impl HealthMonitor {
         if let Some(status) = health_map.get_mut(server_name) {
             status.health = ServerHealth::Crashed { exit_code };
             status.uptime_start = None;
-            println!(
-                "💥 Server '{server_name}' marked as crashed (exit code: {exit_code:?})"
-            );
+            println!("💥 Server '{server_name}' marked as crashed (exit code: {exit_code:?})");
         }
     }
 
@@ -321,9 +317,7 @@ impl HealthMonitor {
             status.consecutive_failures = 0;
             status.consecutive_successes = 1;
             status.uptime_start = Some(Instant::now());
-            println!(
-                "✅ Server '{server_name}' marked as healthy after restart"
-            );
+            println!("✅ Server '{server_name}' marked as healthy after restart");
         }
     }
 
@@ -404,10 +398,12 @@ impl HealthMonitor {
 
             if hash % 50 == 0 {
                 // 2% failure rate for simulation
-                Err(Box::new(ErrorContext::new(BridgeError::HealthCheckFailed {
-                    server: server_name.to_string(),
-                    reason: "Simulated health check failure".to_string(),
-                })))
+                Err(Box::new(ErrorContext::new(
+                    BridgeError::HealthCheckFailed {
+                        server: server_name.to_string(),
+                        reason: "Simulated health check failure".to_string(),
+                    },
+                )))
             } else {
                 Ok(())
             }

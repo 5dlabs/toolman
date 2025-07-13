@@ -57,10 +57,16 @@ impl StdioWrapper {
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
             let config = serde_json::from_str(&content)?;
-            eprintln!("[Bridge] Loaded filter config from: {}", config_path.display());
+            eprintln!(
+                "[Bridge] Loaded filter config from: {}",
+                config_path.display()
+            );
             Ok(config)
         } else {
-            eprintln!("[Bridge] No filter config found at {}, using defaults", config_path.display());
+            eprintln!(
+                "[Bridge] No filter config found at {}, using defaults",
+                config_path.display()
+            );
             Ok(ToolFilterConfig::default())
         }
     }
@@ -71,19 +77,19 @@ impl StdioWrapper {
             if pattern == "*" {
                 return true;
             }
-            
+
             if pattern.ends_with("*") {
                 let prefix = &pattern[..pattern.len() - 1];
                 if tool_name.starts_with(prefix) {
                     return true;
                 }
             }
-            
+
             if tool_name == pattern {
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -190,7 +196,7 @@ impl StdioWrapper {
                 if let Ok(tools_vec) = serde_json::from_value::<Vec<Value>>(tools.clone()) {
                     // Apply client-side filtering based on configuration
                     let filtered_tools = self.filter_tools(tools_vec);
-                    
+
                     // Apply Cursor-specific compatibility fixes
                     let cursor_compatible_tools = self.apply_cursor_compatibility(filtered_tools);
                     return Ok(cursor_compatible_tools);
@@ -298,9 +304,9 @@ impl StdioWrapper {
             }
             "tools/call" => {
                 // Forward all tool calls to the HTTP server
-                let result = self.rt.block_on(async {
-                    self.forward_tool_call(request).await
-                });
+                let result = self
+                    .rt
+                    .block_on(async { self.forward_tool_call(request).await });
 
                 match result {
                     Ok(response) => Ok(Some(response)),

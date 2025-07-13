@@ -261,8 +261,7 @@ impl ToolSuggester {
         let mut seen_tools = HashSet::new();
 
         // Combine description and details for analysis
-        let full_text =
-            format!("{task_description} {}", task_details.unwrap_or("")).to_lowercase();
+        let full_text = format!("{task_description} {}", task_details.unwrap_or("")).to_lowercase();
 
         // Extract existing tool tags
         let tag_regex = Regex::new(r"#tool:(\w+)").unwrap();

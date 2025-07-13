@@ -136,9 +136,7 @@ impl ServerRecoveryManager {
             circuit_breakers.insert(server_name.clone(), false);
         }
 
-        println!(
-            "📋 Registered server '{server_name}' for monitoring and recovery"
-        );
+        println!("📋 Registered server '{server_name}' for monitoring and recovery");
         Ok(())
     }
 
@@ -381,10 +379,12 @@ impl ServerRecoveryManager {
                 // Restart failed, increment circuit breaker
                 self.increment_circuit_breaker(server_name).await;
 
-                Err(Box::new(ErrorContext::new(BridgeError::ServerRestartFailed {
-                    server: server_name.to_string(),
-                    reason: e.to_string(),
-                })))
+                Err(Box::new(ErrorContext::new(
+                    BridgeError::ServerRestartFailed {
+                        server: server_name.to_string(),
+                        reason: e.to_string(),
+                    },
+                )))
             }
         }
     }

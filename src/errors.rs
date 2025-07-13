@@ -264,9 +264,7 @@ impl ErrorContext {
             }
 
             BridgeError::InvalidJsonRpc { reason } => {
-                format!(
-                    "📝 Request format issue: {reason}. Please check the request structure."
-                )
+                format!("📝 Request format issue: {reason}. Please check the request structure.")
             }
 
             _ => {
