@@ -17,7 +17,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "toolman"
-path = "src/main.rs"
+path = "src/bin/stdio_wrapper.rs"
 
 [[bin]]
 name = "toolman-http"
