@@ -1,8 +1,8 @@
-# Runtime stage - Use Alpine with Docker CLI for running Docker-based MCP servers
-FROM alpine:latest
+# Runtime stage - Use Ubuntu for glibc compatibility
+FROM ubuntu:24.04
 
-# Install system dependencies and all runtimes using Alpine packages
-RUN apk add --no-cache \
+# Install system dependencies and all runtimes
+RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     git \
@@ -13,15 +13,13 @@ RUN apk add --no-cache \
     # Python runtime
     python3 \
     python3-dev \
-    py3-pip \
+    python3-pip \
     # Go runtime
-    go \
+    golang-go \
     # Java runtime
-    openjdk17-jre \
-    # .NET runtime (if available)
-    dotnet8-runtime \
+    openjdk-17-jre \
     # Docker CLI for Docker-based MCP servers
-    docker-cli \
+    docker.io \
     # Core utilities
     coreutils \
     findutils \
@@ -30,13 +28,10 @@ RUN apk add --no-cache \
     tar \
     gzip \
     unzip \
-    # Additional libraries for compatibility
-    libstdc++ \
-    gcompat \
-    || true
+    && rm -rf /var/lib/apt/lists/*
 
 # Create symbolic links for Python
-RUN ln -sf python3 /usr/bin/python || true
+RUN ln -sf python3 /usr/bin/python
 
 # Install UV for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
@@ -53,7 +48,7 @@ COPY toolman-linux /usr/local/bin/toolman
 RUN chmod +x /usr/local/bin/toolman-http /usr/local/bin/toolman
 
 # Create non-root user
-RUN adduser -D -u 1000 -s /bin/bash mcp
+RUN useradd -m -u 1000 -s /bin/bash mcp
 
 # Create directories for configs
 RUN mkdir -p /config && \
