@@ -453,6 +453,15 @@ jobs:
           kubectl create namespace mcp --dry-run=client -o yaml | kubectl apply -f -
           kubectl get namespaces | grep mcp
           
+          # Create image pull secret for private GHCR access
+          echo "🔍 Creating image pull secret for GHCR..."
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=${{ env.REGISTRY }} \
+            --docker-username=${{ github.repository_owner }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --namespace=mcp \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
           # Install with test values (no wait, we'll debug manually)
           echo "🔍 Installing Helm chart..."
           echo "Using image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
@@ -460,6 +469,7 @@ jobs:
             --namespace mcp \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ needs.version.outputs.version }} \
+            --set imagePullSecrets[0].name=ghcr-secret \
             --debug
 
           # Immediate status check
