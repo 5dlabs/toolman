@@ -26,6 +26,12 @@ pub struct ToolSuggester {
     patterns: Vec<(Regex, Vec<(String, String)>)>,
 }
 
+impl Default for ToolSuggester {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolSuggester {
     pub fn new() -> Self {
         let mut suggester = Self {

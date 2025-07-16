@@ -22,7 +22,7 @@ impl ContextConfig {
     /// Create a new context config
     pub fn new(project_path: String, user_id: Option<String>, client_type: Option<String>) -> Self {
         let context_key = if let Some(ref uid) = user_id {
-            format!("{}+{}", project_path, uid)
+            format!("{project_path}+{uid}")
         } else {
             project_path.clone()
         };
@@ -45,7 +45,7 @@ impl ContextConfig {
         let mut hasher = Sha256::new();
         hasher.update(context_key.as_bytes());
         let result = hasher.finalize();
-        format!("{:x}", result)[..16].to_string() // Use first 16 chars of hash
+        format!("{result:x}")[..16].to_string() // Use first 16 chars of hash
     }
 
     /// Update the last_updated timestamp
@@ -106,13 +106,13 @@ impl ContextManager {
         client_type: Option<String>,
     ) -> Result<()> {
         let context_key = if let Some(ref uid) = user_id {
-            format!("{}+{}", project_path, uid)
+            format!("{project_path}+{uid}")
         } else {
             project_path.clone()
         };
 
         let context_id = ContextConfig::hash_context(&context_key);
-        let context_file = self.contexts_dir.join(format!("{}.json", context_id));
+        let context_file = self.contexts_dir.join(format!("{context_id}.json"));
 
         let context = if context_file.exists() {
             // Load existing context
@@ -175,7 +175,7 @@ impl ContextManager {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)?;
                 if let Ok(context) = serde_json::from_str::<ContextConfig>(&content) {
                     contexts.push(context);
@@ -194,7 +194,7 @@ impl ContextManager {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)?;
                 if let Ok(context) = serde_json::from_str::<ContextConfig>(&content) {
                     if let Ok(last_updated) =
@@ -203,8 +203,7 @@ impl ContextManager {
                         if last_updated.with_timezone(&chrono::Utc) < thirty_days_ago {
                             if let Err(e) = std::fs::remove_file(&path) {
                                 eprintln!(
-                                    "Warning: Failed to remove old context file {:?}: {}",
-                                    path, e
+                                    "Warning: Failed to remove old context file {path:?}: {e}"
                                 );
                             }
                         }

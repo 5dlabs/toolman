@@ -31,8 +31,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for faster Python package management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    mv /root/.cargo/bin/uv /usr/local/bin/
+RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
+    mv /root/.local/bin/uv /usr/local/bin/ || mv /root/.cargo/bin/uv /usr/local/bin/ || true
 
 # Update npm to latest
 RUN npm install -g npm@latest

@@ -190,8 +190,7 @@ impl ServerRecoveryManager {
                 if self.is_circuit_breaker_open(server_name).await {
                     return RecoveryAction::RequireManualIntervention {
                         message: format!(
-                            "Server '{}' circuit breaker is open. Too many failures detected.",
-                            server_name
+                            "Server '{server_name}' circuit breaker is open. Too many failures detected."
                         ),
                     };
                 }
@@ -257,7 +256,7 @@ impl ServerRecoveryManager {
             }
 
             RecoveryAction::RetryWithDelay { delay } => {
-                println!("⏱️ Delaying retry for {:?}", delay);
+                println!("⏱️ Delaying retry for {delay:?}");
                 tokio::time::sleep(delay).await;
                 Ok(())
             }
@@ -276,7 +275,7 @@ impl ServerRecoveryManager {
             } => self.mark_server_as_failed(&server_name, &reason).await,
 
             RecoveryAction::RequireManualIntervention { message } => {
-                println!("🚨 Manual intervention required: {}", message);
+                println!("🚨 Manual intervention required: {message}");
                 Ok(())
             }
         }
@@ -336,7 +335,7 @@ impl ServerRecoveryManager {
             health_monitor.mark_server_restarting(server_name).await;
         }
 
-        println!("🔄 Attempting to restart server: {}", server_name);
+        println!("🔄 Attempting to restart server: {server_name}");
 
         // Spawn the new process
         let mut cmd = Command::new(&connection_info.command);
@@ -392,8 +391,7 @@ impl ServerRecoveryManager {
     /// Switch to a fallback server
     async fn switch_to_fallback(&self, primary: &str, fallback: &str) -> BridgeResult<()> {
         println!(
-            "🔄 Switching from primary server '{}' to fallback '{}'",
-            primary, fallback
+            "🔄 Switching from primary server '{primary}' to fallback '{fallback}'"
         );
 
         // Update fallback mappings
@@ -407,13 +405,13 @@ impl ServerRecoveryManager {
 
         // For now, this is a placeholder - in a real implementation,
         // you'd need to reroute requests to the fallback server
-        println!("✅ Configured fallback: {} -> {}", primary, fallback);
+        println!("✅ Configured fallback: {primary} -> {fallback}");
         Ok(())
     }
 
     /// Mark a server as permanently failed
     async fn mark_server_as_failed(&self, server_name: &str, reason: &str) -> BridgeResult<()> {
-        println!("💀 Marking server '{}' as failed: {}", server_name, reason);
+        println!("💀 Marking server '{server_name}' as failed: {reason}");
 
         // Open circuit breaker permanently
         {
@@ -542,7 +540,7 @@ impl ServerRecoveryManager {
         for (server_name, task) in tasks.drain() {
             task.abort();
             let _ = task.await;
-            println!("🛑 Stopped recovery task for server: {}", server_name);
+            println!("🛑 Stopped recovery task for server: {server_name}");
         }
 
         // Shutdown health monitor
@@ -607,7 +605,7 @@ mod tests {
             RecoveryAction::RetryWithDelay { .. } => {
                 // Expected for timeout errors
             }
-            _ => panic!("Unexpected recovery action: {:?}", action),
+            _ => panic!("Unexpected recovery action: {action:?}"),
         }
     }
 }

@@ -141,8 +141,7 @@ impl SystemConfigManager {
                 // Attempt to restore from backup on failure
                 if let Err(restore_err) = self.restore_from_backup(&backup_path) {
                     eprintln!(
-                        "Failed to restore from backup after save failure: {}",
-                        restore_err
+                        "Failed to restore from backup after save failure: {restore_err}"
                     );
                 }
                 Err(e)
@@ -268,7 +267,7 @@ impl SystemConfigManager {
         };
 
         let config_filename = self.config_path.file_name().unwrap().to_string_lossy();
-        let backup_pattern = format!("{}.backup.", config_filename);
+        let backup_pattern = format!("{config_filename}.backup.");
 
         // Find all backup files
         let mut backup_files = Vec::new();
@@ -295,8 +294,7 @@ impl SystemConfigManager {
         for (path, _) in backup_files.iter().skip(5) {
             if let Err(e) = std::fs::remove_file(path) {
                 eprintln!(
-                    "Warning: Failed to remove old backup file {:?}: {}",
-                    path, e
+                    "Warning: Failed to remove old backup file {path:?}: {e}"
                 );
             }
         }
@@ -312,7 +310,7 @@ impl SystemConfigManager {
         };
 
         let config_filename = self.config_path.file_name().unwrap().to_string_lossy();
-        let temp_pattern = format!("{}.tmp.", config_filename);
+        let temp_pattern = format!("{config_filename}.tmp.");
 
         for entry in std::fs::read_dir(parent_dir)? {
             let entry = entry?;

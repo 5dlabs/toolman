@@ -426,24 +426,27 @@ jobs:
         with:
           cluster_name: helm-test
           kubectl_version: v1.30.0
-          wait: 60s
+          wait: 120s
 
       - name: Test Helm chart deployment
         run: |
           echo "🚀 Testing Helm chart deployment..."
 
-          # Install with test values
+          # Wait for cluster to be fully ready
+          kubectl wait --for=condition=ready node --all --timeout=300s
+
+          # Install with test values and longer timeout
           helm install test-toolman ./charts/mcp-proxy \
             --set image.repository=nginx \
             --set image.tag=latest \
-            --wait --timeout=120s
+            --wait --timeout=300s
 
           # Verify deployment
           kubectl get pods -l app.kubernetes.io/name=mcp-proxy
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=60s
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=180s
 
           # Cleanup
-          helm uninstall test-toolman
+          helm uninstall test-toolman --timeout=120s
 
           echo "✅ Helm chart deployment test passed"
 

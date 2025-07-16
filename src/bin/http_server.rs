@@ -226,10 +226,11 @@ impl ServerConnectionPool {
             );
 
             // Build filesystem-specific args: npx -y @modelcontextprotocol/server-filesystem <user_working_dir>
-            let mut fs_args = Vec::new();
-            fs_args.push("-y".to_string());
-            fs_args.push("@modelcontextprotocol/server-filesystem".to_string());
-            fs_args.push(user_dir.to_string_lossy().to_string());
+            let fs_args = vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string(),
+                user_dir.to_string_lossy().to_string()
+            ];
 
             cmd.args(&fs_args);
         } else {
