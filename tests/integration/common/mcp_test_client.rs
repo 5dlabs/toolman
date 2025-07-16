@@ -41,13 +41,17 @@ pub struct McpTestClient {
 }
 
 impl McpTestClient {
-    pub async fn new(command: &str, args: &[String]) -> Result<Self> {
+    pub async fn new(command: &str, args: &[String], working_directory: Option<&str>) -> Result<Self> {
         let mut cmd = Command::new(command);
         cmd.args(args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
+        
+        if let Some(working_dir) = working_directory {
+            cmd.current_dir(working_dir);
+        }
 
         let mut child = cmd.spawn().context("Failed to spawn MCP server process")?;
 

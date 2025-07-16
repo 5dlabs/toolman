@@ -16,6 +16,7 @@ pub struct ServerConfig {
     pub env: HashMap<String, String>,
     pub timeout_secs: u64,
     pub setup_delay_ms: u64,
+    pub working_directory: Option<String>,
 }
 
 impl ServerConfig {
@@ -27,6 +28,7 @@ impl ServerConfig {
             env: HashMap::new(),
             timeout_secs: 30,
             setup_delay_ms: 1000,
+            working_directory: None,
         }
     }
 
@@ -42,6 +44,11 @@ impl ServerConfig {
 
     pub fn with_setup_delay(mut self, delay_ms: u64) -> Self {
         self.setup_delay_ms = delay_ms;
+        self
+    }
+
+    pub fn with_working_directory(mut self, working_dir: &str) -> Self {
+        self.working_directory = Some(working_dir.to_string());
         self
     }
 }
@@ -60,7 +67,7 @@ impl TestServer {
 
         let client = timeout(
             Duration::from_secs(config.timeout_secs),
-            McpTestClient::new(&config.command, &config.args),
+            McpTestClient::new(&config.command, &config.args, config.working_directory.as_deref()),
         )
         .await
         .context("Server startup timeout")?
