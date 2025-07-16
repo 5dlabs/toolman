@@ -523,7 +523,7 @@ jobs:
   # Deploy to production
   deploy:
     needs: [version, build-binaries, build-docker, security-scan]
-    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: false # Disabled - no kubeconfig configured in CI
     runs-on: ubuntu-latest
     environment: production
     permissions:
