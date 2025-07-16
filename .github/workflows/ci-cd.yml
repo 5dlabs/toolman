@@ -453,25 +453,40 @@ jobs:
           kubectl create namespace mcp --dry-run=client -o yaml | kubectl apply -f -
           kubectl get namespaces | grep mcp
           
-          # Install with test values and longer timeout
+          # Install with test values (no wait, we'll debug manually)
           echo "🔍 Installing Helm chart..."
+          echo "Using image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
           helm install test-toolman ./charts/mcp-proxy \
             --namespace mcp \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ needs.version.outputs.version }} \
-            --wait --timeout=300s \
             --debug
 
-          # Verify deployment
-          echo "🔍 Checking deployment status..."
+          # Immediate status check
+          echo "🔍 Checking immediate deployment status..."
           kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp
           kubectl get all -n mcp
           
+          # Wait a bit for pods to start
+          echo "🔍 Waiting 30 seconds for initial pod startup..."
+          sleep 30
+          
+          # Check status again
+          echo "🔍 Checking pod status after 30s..."
+          kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp -o wide
+          kubectl describe pods -l app.kubernetes.io/name=mcp-proxy -n mcp
+          
+          # Check logs regardless of status
+          echo "🔍 Checking pod logs..."
+          kubectl logs -l app.kubernetes.io/name=mcp-proxy -n mcp --tail=50 || echo "No logs available yet"
+          
+          # Now try to wait for readiness
           echo "🔍 Waiting for pods to be ready..."
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp --timeout=180s || {
-            echo "❌ Pod readiness check failed, debugging..."
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp --timeout=120s || {
+            echo "❌ Pod readiness check failed after 2 minutes, final debugging..."
             kubectl describe pods -l app.kubernetes.io/name=mcp-proxy -n mcp
-            kubectl logs -l app.kubernetes.io/name=mcp-proxy -n mcp --tail=50 || echo "No logs available"
+            kubectl logs -l app.kubernetes.io/name=mcp-proxy -n mcp --tail=100 || echo "No logs available"
+            kubectl get events -n mcp --sort-by='.lastTimestamp' | tail -20
           }
           
           # Debug: Check ConfigMap and deployment
