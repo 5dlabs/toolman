@@ -10,12 +10,12 @@ data:
     {{- .Values.config.servers | toJson | nindent 4 }}
     {{- else }}
     {
-      "mcpServers": {
+      "servers": {
         "filesystem": {
           "command": "npx",
           "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
           "env": {},
-          "disabled": false
+          "enabled": true
         },
         "brave-search": {
           "command": "npx",
@@ -23,13 +23,13 @@ data:
           "env": {
             "BRAVE_API_KEY": ""
           },
-          "disabled": true
+          "enabled": false
         },
         "fetch": {
           "command": "npx",
           "args": ["-y", "@modelcontextprotocol/server-fetch"],
           "env": {},
-          "disabled": false
+          "enabled": true
         }
       }
     }
