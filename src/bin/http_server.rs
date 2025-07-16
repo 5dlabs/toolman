@@ -4,7 +4,18 @@
 #![allow(clippy::too_many_arguments)]
 
 use anyhow::Result;
+<<<<<<< HEAD
 use axum::{extract::State, http::StatusCode, response::Json, routing::{get, post}, Router};
+=======
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
+};
+use chrono;
+>>>>>>> fa75bab315f006b6574478f9f7e86fbf377c668d
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1697,22 +1708,20 @@ async fn health_check() -> Json<Value> {
 }
 
 // Readiness probe - checks if MCP servers are available and ready
-async fn readiness_check(
-    State(state): State<BridgeState>,
-) -> Result<Json<Value>, StatusCode> {
+async fn readiness_check(State(state): State<BridgeState>) -> Result<Json<Value>, StatusCode> {
     let config_manager = state.system_config_manager.read().await;
     let servers = config_manager.get_servers();
-    
+
     // Check if we have any servers configured
     if servers.is_empty() {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
-    
+
     // For now, just check if servers are configured
     // TODO: In the future, we could ping each server to check actual availability
     Ok(Json(json!({
         "status": "ready",
-        "service": "mcp-proxy", 
+        "service": "mcp-proxy",
         "servers_configured": servers.len(),
         "timestamp": chrono::Utc::now().to_rfc3339()
     })))
