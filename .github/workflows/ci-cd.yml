@@ -1,24 +1,23 @@
 name: Unified CI/CD
 
-# This workflow includes auto-formatting capabilities:
-# - If Rust code formatting fails, it will automatically run `cargo fmt --all`
-# - The formatted code will be committed and pushed back to the branch
-# - The CI will then re-run to verify the formatting is correct
-# - This only happens on push events, not on pull requests
-
 on:
   push:
-    branches: [ main, develop ]
-    tags: [ 'v*' ]
+    branches: [main, 'fix/**', 'feature/**']
+    tags: ['v*']
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [main]
+  workflow_dispatch: {}
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: 5dlabs/toolman
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
 
 jobs:
   # Change detection job
@@ -44,7 +43,7 @@ jobs:
               - 'Dockerfile'
               - 'docker-compose.yml'
             config:
-              - 'servers-config.json'
+              - 'servers-config*.json'
               - 'scripts/**'
             ci:
               - '.github/workflows/**'
@@ -95,8 +94,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          # Shared cache key for all Rust jobs
-          shared-key: "rust-cache-mcp-proxy"
+          shared-key: "rust-cache-toolman"
           cache-targets: true
 
       - name: Check formatting
@@ -185,27 +183,6 @@ jobs:
           [skip ci]"
           git push
 
-      - name: Comment on commit
-        if: steps.changes.outputs.has-changes == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const sha = context.sha;
-
-            await github.rest.repos.createCommitComment({
-              owner,
-              repo,
-              commit_sha: sha,
-              body: `🔧 **Auto-formatting applied**
-
-              The CI/CD pipeline detected formatting issues and automatically applied \`cargo fmt\` to fix them.
-
-              A new commit has been pushed with the formatting fixes. The CI will re-run automatically.
-
-              📝 **Next time**: Run \`cargo fmt --all\` locally before pushing to avoid this automatic formatting.`
-            });
-
   # Re-run lint after auto-format (only if auto-format ran)
   lint-rust-retry:
     needs: [changes, auto-format]
@@ -222,7 +199,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-cache-mcp-proxy"
+          shared-key: "rust-cache-toolman"
           cache-targets: true
 
       - name: Verify formatting is now correct
@@ -261,7 +238,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-cache-mcp-proxy"
+          shared-key: "rust-cache-toolman"
           cache-targets: true
 
       - name: Run tests
@@ -276,7 +253,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Cache Trivy DB
       - name: Cache Trivy database
         uses: actions/cache@v4
         with:
@@ -301,21 +277,6 @@ jobs:
           name: trivy-results
           path: trivy-results.sarif
 
-      # Cache cargo-audit binary
-      - name: Cache cargo-audit
-        uses: actions/cache@v4
-        id: cargo-audit-cache
-        with:
-          path: ~/.cargo/bin/cargo-audit
-          key: cargo-audit-${{ runner.os }}-0.21.2
-
-      - name: Install cargo-audit
-        if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-audit --version 0.21.2
-
-      - name: Rust security audit
-        run: cargo audit || true
-
   # Test coverage reporting (non-blocking)
   test-coverage:
     needs: changes
@@ -329,37 +290,17 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-cache-mcp-proxy"
+          shared-key: "rust-cache-toolman"
           cache-targets: true
 
-      # Install cargo-llvm-cov for coverage
-      - name: Cache cargo-llvm-cov
-        uses: actions/cache@v4
-        id: cargo-llvm-cov-cache
-        with:
-          path: ~/.cargo/bin/cargo-llvm-cov
-          key: cargo-llvm-cov-${{ runner.os }}-0.6.8
-
       - name: Install cargo-llvm-cov
-        if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-llvm-cov --version 0.6.8
+        run: cargo install cargo-llvm-cov
 
       - name: Generate test coverage
         run: |
           echo "📊 Generating test coverage report..."
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info || true
           cargo llvm-cov --all-features --workspace --html --output-dir coverage-html || true
-
-          # Generate summary
-          echo "## Test Coverage Summary" > coverage-summary.md
-          echo "" >> coverage-summary.md
-          if [ -f "lcov.info" ]; then
-            COVERAGE=$(grep -E "^LF:|^LH:" lcov.info | awk -F: '{if($1=="LF") lf+=$2; if($1=="LH") lh+=$2} END {if(lf>0) printf "%.1f", (lh/lf)*100; else print "0.0"}')
-            echo "📊 **Overall Coverage**: ${COVERAGE}%" >> coverage-summary.md
-            echo "Coverage: ${COVERAGE}%"
-          else
-            echo "⚠️ **Coverage**: Could not generate coverage report" >> coverage-summary.md
-          fi
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
@@ -368,9 +309,8 @@ jobs:
           path: |
             lcov.info
             coverage-html/
-            coverage-summary.md
 
-  # Helm chart testing and validation
+  # Helm chart testing
   helm-test:
     needs: changes
     if: needs.changes.outputs.helm == 'true' || github.event_name == 'push'
@@ -383,12 +323,6 @@ jobs:
         with:
           version: '3.14.0'
 
-      - name: Cache Helm dependencies
-        uses: actions/cache@v4
-        with:
-          path: charts/mcp-proxy/charts
-          key: helm-deps-${{ hashFiles('charts/mcp-proxy/Chart.yaml') }}
-
       - name: Lint Helm chart
         run: |
           echo "🔍 Linting Helm chart..."
@@ -397,18 +331,8 @@ jobs:
       - name: Validate Helm templates
         run: |
           echo "📋 Validating Helm templates..."
-
-          # Test with default values
-          helm template mcp-proxy charts/mcp-proxy --debug > /tmp/default-template.yaml
-          echo "✅ Default template validation passed"
-
-          # Test with development values
-          helm template mcp-proxy charts/mcp-proxy -f charts/mcp-proxy/values-development.yaml --debug > /tmp/dev-template.yaml
-          echo "✅ Development template validation passed"
-
-          # Test with production values
-          helm template mcp-proxy charts/mcp-proxy -f charts/mcp-proxy/values-production.yaml --debug > /tmp/prod-template.yaml
-          echo "✅ Production template validation passed"
+          helm template mcp-proxy charts/mcp-proxy --debug > /tmp/template.yaml
+          echo "✅ Template validation passed"
 
       - name: Create test cluster
         uses: helm/kind-action@v1.8.0
@@ -420,36 +344,18 @@ jobs:
       - name: Test Helm chart deployment
         run: |
           echo "🚀 Testing Helm chart deployment..."
-
-          # Install with default values
           helm install test-mcp-proxy charts/mcp-proxy \
             --set image.repository=nginx \
             --set image.tag=latest \
             --wait --timeout=300s
-
-          # Verify deployment
+          
           kubectl get pods -l app.kubernetes.io/name=mcp-proxy
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=120s
-
-          # Test service connectivity
-          kubectl port-forward svc/test-mcp-proxy 8080:3000 &
-          sleep 5
-
-          # Cleanup
+          
           helm uninstall test-mcp-proxy
-
           echo "✅ Helm chart deployment test passed"
 
-      - name: Upload template artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-templates
-          path: |
-            /tmp/default-template.yaml
-            /tmp/dev-template.yaml
-            /tmp/prod-template.yaml
-
-  # Build binaries for multiple platforms
+  # Build binaries
   build-binaries:
     needs: [version, lint-rust, test-rust, lint-rust-retry]
     if: always() && !cancelled() && (needs.lint-rust.result == 'success' || needs.lint-rust-retry.result == 'success') && needs.test-rust.result == 'success'
@@ -476,20 +382,13 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-cache-mcp-proxy"
+          shared-key: "rust-cache-toolman"
           cache-targets: true
-
-      - name: Install cross-compilation tools (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-multilib
 
       - name: Build release binaries
         run: |
           echo "🏗️ Building for ${{ matrix.target }}..."
           cargo build --release --target ${{ matrix.target }}
-          cargo build --release --bin toolman-http --target ${{ matrix.target }}
 
       - name: Package binaries (Unix)
         if: matrix.os != 'windows-latest'
@@ -497,16 +396,10 @@ jobs:
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/toolman" "dist/"
           cp "target/${{ matrix.target }}/release/toolman-http" "dist/"
-
-          # Copy configuration files
-          cp servers-config.json dist/servers-config.example.json
-
-          # Create archive
+          cp servers-config.http-example.json dist/servers-config.example.json
           cd dist
           tar czf ../toolman-${{ matrix.target }}.tar.gz *
           cd ..
-
-          # Generate checksum
           shasum -a 256 toolman-${{ matrix.target }}.tar.gz > toolman-${{ matrix.target }}.tar.gz.sha256
 
       - name: Package binaries (Windows)
@@ -516,16 +409,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item "target\${{ matrix.target }}\release\toolman.exe" "dist\"
           Copy-Item "target\${{ matrix.target }}\release\toolman-http.exe" "dist\"
-
-          # Copy configuration files
-          Copy-Item "servers-config.json" "dist\servers-config.example.json"
-
-          # Create archive
+          Copy-Item "servers-config.http-example.json" "dist\servers-config.example.json"
           Set-Location dist
           tar czf ..\toolman-${{ matrix.target }}.tar.gz *
           Set-Location ..
-
-          # Generate checksum
           $hash = Get-FileHash toolman-${{ matrix.target }}.tar.gz -Algorithm SHA256
           "$($hash.Hash.ToLower())  toolman-${{ matrix.target }}.tar.gz" | Out-File -FilePath "toolman-${{ matrix.target }}.tar.gz.sha256" -Encoding ASCII
 
@@ -587,299 +474,9 @@ jobs:
           build-args: |
             BUILDKIT_INLINE_CACHE=1
 
-      - name: Generate Docker Compose example
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          cat > docker-compose.example.yml << EOF
-          version: '3.8'
-          services:
-            mcp-proxy:
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
-              ports:
-                - "3000:3000"
-              volumes:
-                - ./servers-config.json:/config/servers-config.json:ro
-              environment:
-                - PORT=3000
-                - PROJECT_DIR=/config
-              restart: unless-stopped
-          EOF
-
-      - name: Upload Docker Compose example
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-compose-example
-          path: docker-compose.example.yml
-
-  # Package and publish Helm chart
-  package-helm:
-    needs: [version, helm-test, build-docker]
-    if: always() && !cancelled() && needs.helm-test.result == 'success' && needs.build-docker.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: '3.14.0'
-
-      - name: Update chart version
-        run: |
-          echo "📦 Updating chart version to ${{ needs.version.outputs.version }}"
-          sed -i "s/version: .*/version: ${{ needs.version.outputs.version }}/" charts/mcp-proxy/Chart.yaml
-          sed -i "s/appVersion: .*/appVersion: \"${{ needs.version.outputs.version }}\"/" charts/mcp-proxy/Chart.yaml
-
-          # Update default image repository in values.yaml
-          sed -i "s|repository: .*|repository: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}|" charts/mcp-proxy/values.yaml
-
-      - name: Package Helm chart
-        run: |
-          echo "📦 Packaging Helm chart..."
-          helm package charts/mcp-proxy --destination ./helm-packages
-
-          # Generate index
-          helm repo index ./helm-packages --url https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/
-
-      - name: Upload Helm chart
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-chart
-          path: |
-            helm-packages/*.tgz
-            helm-packages/index.yaml
-
-  # Deploy to development/staging (optional)
-  deploy-dev:
-    needs: [version, build-docker, package-helm]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_DEV_ENABLED == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: '3.14.0'
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.30.0'
-
-      - name: Configure kubectl
-        run: |
-          echo "🔧 Configuring kubectl with cluster credentials..."
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-          # Verify connection
-          kubectl cluster-info
-          kubectl get nodes
-
-      - name: Deploy to development
-        run: |
-          echo "🚀 Deploying to development environment..."
-
-          # Create namespace if it doesn't exist
-          kubectl create namespace mcp-proxy-dev --dry-run=client -o yaml | kubectl apply -f -
-
-          # Deploy using development values
-          helm upgrade --install mcp-proxy-dev charts/mcp-proxy \
-            --namespace mcp-proxy-dev \
-            --values charts/mcp-proxy/values-development.yaml \
-            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
-            --set image.tag=${{ needs.version.outputs.version }} \
-            --wait --timeout=300s
-
-          # Verify deployment
-          kubectl get pods -n mcp-proxy-dev
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp-proxy-dev --timeout=120s
-
-          echo "✅ Development deployment completed"
-
-      - name: Show deployment status
-        if: always()
-        run: |
-          echo "📊 Deployment Status:"
-          kubectl get all -n mcp-proxy-dev
-
-          echo ""
-          echo "📋 Recent events:"
-          kubectl get events -n mcp-proxy-dev --sort-by='.lastTimestamp' | tail -10
-
-          echo ""
-          echo "🔗 Access Information:"
-          kubectl get svc -n mcp-proxy-dev
-
-  # Create release (only for tags)
-  release:
-    needs: [version, build-binaries, build-docker, package-helm]
-    if: needs.version.outputs.is-release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          cat << 'EOF' > release_notes.md
-          # MCP Bridge Proxy v${{ needs.version.outputs.version }}
-
-          Dynamic tool management for MCP (Model Context Protocol) servers with enhanced multi-project support.
-
-          ## 🚀 Features
-
-          - **Multi-Project Support**: Per-project tool configuration and management
-          - **HTTP Server**: Centralized tool management with REST API
-          - **25+ MCP Servers**: Support for 278+ tools across various domains
-          - **Dynamic Configuration**: Enable/disable tools at runtime
-          - **Persistent Storage**: Configuration management and caching
-          - **Cross-Platform**: Native binaries for Linux, macOS, and Windows
-
-          ## 📦 Quick Installation
-
-          ### One-Line Install (Recommended)
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
-          ```
-
-          ### Manual Download
-
-          | Platform | Architecture | Download |
-          |----------|--------------|----------|
-          | Linux | x86_64 | [toolman-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-unknown-linux-gnu.tar.gz) |
-          | macOS | x86_64 (Intel) | [toolman-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-apple-darwin.tar.gz) |
-          | macOS | aarch64 (M1/M2) | [toolman-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-aarch64-apple-darwin.tar.gz) |
-          | Windows | x86_64 | [toolman-x86_64-pc-windows-msvc.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-pc-windows-msvc.tar.gz) |
-
-          ### Verify Downloads
-          All binaries include SHA256 checksums for verification:
-          ```bash
-          # Example for macOS ARM64
-          shasum -a 256 -c toolman-aarch64-apple-darwin.tar.gz.sha256
-          ```
-
-          ## 🐳 Container Images
-
-          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}`
-          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
-
-          ```bash
-          docker run -p 3000:3000 -v ./servers-config.json:/config/servers-config.json:ro ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
-          ```
-
-          ## ⚓ Kubernetes Deployment
-
-          ### Helm Chart
-          - `mcp-proxy-${{ needs.version.outputs.version }}.tgz`
-
-          ```bash
-          # Install with Helm
-          helm install mcp-proxy https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/mcp-proxy-${{ needs.version.outputs.version }}.tgz
-
-          # Or add repository
-          helm repo add mcp-proxy https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/
-          helm install mcp-proxy mcp-proxy/mcp-proxy --version ${{ needs.version.outputs.version }}
-          ```
-
-          ## 🔧 Configuration
-
-          ### Cursor IDE Integration
-          The installer automatically configures Cursor. Manual configuration:
-
-          ```json
-          {
-            "mcpServers": {
-              "mcp-proxy": {
-                "command": "/path/to/toolman",
-                "args": []
-              }
-            }
-          }
-          ```
-
-          ### MCP Server Configuration
-          ```bash
-          # Copy example configuration
-          cp servers-config.example.json servers-config.json
-
-          # Edit to enable/configure MCP servers
-          # Available servers: filesystem, github, brave-search, fetch, postgres, and more
-          ```
-
-          ## 📖 Usage
-
-          ### Command Line Interface
-          ```bash
-          # List available MCP servers
-          toolman --list-servers
-
-          # Enable/disable servers
-          toolman --enable filesystem --disable brave-search
-
-          # Run as stdio server (for Cursor)
-          toolman
-          ```
-
-          ### HTTP Server
-          ```bash
-          # Start HTTP server
-          toolman-http --port 3000 --project-dir .
-
-          # Access management interface
-          curl http://localhost:3000/tools
-          ```
-
-          ## 🔄 Upgrading
-
-          Re-run the installation script or download the new binary:
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
-          ```
-
-          ## 📊 Checksums
-
-          All binaries include SHA256 checksums for security verification. See the `.sha256` files in the release assets.
-
-          ## 🆘 Support
-
-          - 📖 [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
-          - 🐛 [Issues](https://github.com/${{ github.repository }}/issues)
-          - 💬 [Discussions](https://github.com/${{ github.repository }}/discussions)
-          - 🚀 [Deployment Guide](https://github.com/${{ github.repository }}/blob/main/docs/DEPLOYMENT.md)
-
-          ---
-
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ needs.version.outputs.version }}...v${{ needs.version.outputs.version }}
-          EOF
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.version.outputs.version }}
-          name: MCP Bridge Proxy v${{ needs.version.outputs.version }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
-          files: |
-            toolman-*/toolman-*.tar.gz
-            toolman-*/toolman-*.tar.gz.sha256
-            helm-chart/*.tgz
-            helm-chart/index.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # Deployment summary
   deployment-summary:
-    needs: [version, build-binaries, build-docker, security-scan, test-coverage, helm-test, package-helm, deploy-dev]
+    needs: [version, build-binaries, build-docker, security-scan, test-coverage, helm-test]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -888,23 +485,16 @@ jobs:
           echo "🎉 Build and deployment summary for ${{ needs.version.outputs.version }}"
           echo ""
           echo "## Artifacts Built:"
-          echo "- ✅ Binary artifacts for multiple platforms"
-          echo "- ✅ Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
-          echo "- 📦 Helm chart: ${{ needs.package-helm.result }}"
+          echo "- ✅ Binary artifacts: ${{ needs.build-binaries.result }}"
+          echo "- ✅ Docker image: ${{ needs.build-docker.result }}"
           echo ""
           echo "## Quality Checks:"
           echo "- ✅ Rust formatting and linting"
-          echo "- ✅ Test suite passed"
+          echo "- ✅ Test suite: ${{ needs.test-rust.result }}"
           echo "- 📊 Security scan: ${{ needs.security-scan.result }}"
           echo "- 📊 Coverage report: ${{ needs.test-coverage.result }}"
           echo "- 🎯 Helm chart tests: ${{ needs.helm-test.result }}"
           echo ""
-          echo "## Deployment:"
-          echo "- 🚀 Development deployment: ${{ needs.deploy-dev.result }}"
-          echo ""
-          echo "## Next Steps:"
-          echo "- Binary releases are available in GitHub Releases (for tags)"
-          echo "- Docker image is available in GitHub Container Registry"
-          echo "- Helm chart is packaged and ready for deployment"
-          echo "- Use the docker-compose.example.yml for easy deployment"
-          echo "- Deploy to Kubernetes using: helm install mcp-proxy ./charts/mcp-proxy"
+          echo "## Images:"
+          echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
+          echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
