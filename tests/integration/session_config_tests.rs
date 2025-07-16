@@ -10,8 +10,8 @@ use std::collections::HashMap;
 #[tokio::test]
 async fn test_session_based_initialization() -> Result<()> {
     // Start HTTP server
-    let server_handle = tokio::spawn(async {
-        let args = vec!["toolman-http".to_string(), "--port".to_string(), "3002".to_string()];
+    let _server_handle = tokio::spawn(async {
+        let _args = ["toolman-http".to_string(), "--port".to_string(), "3002".to_string()];
         // This would normally start the server - for now we'll assume it's running
     });
 

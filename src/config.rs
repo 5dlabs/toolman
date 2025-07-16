@@ -17,19 +17,14 @@ pub struct ToolConfig {
 }
 
 /// Execution context for MCP servers
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ExecutionContext {
     /// Server runs locally in agent context (for filesystem access, etc.)
     Local,
     /// Server runs remotely on server-side (for web APIs, databases, etc.)
+    #[default]
     Remote,
-}
-
-impl Default for ExecutionContext {
-    fn default() -> Self {
-        ExecutionContext::Remote
-    }
 }
 
 /// Configuration for a single MCP server

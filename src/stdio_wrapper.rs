@@ -373,7 +373,7 @@ impl StdioWrapper {
                         })))
                     }
                     Err(e) => {
-                        eprintln!("[Bridge] Error loading session config: {}", e);
+                        eprintln!("[Bridge] Error loading session config: {e}");
                         // Fall back to standard initialization
                         Ok(Some(json!({
                             "jsonrpc": "2.0",
@@ -483,7 +483,7 @@ impl StdioWrapper {
         let response_text = response.text().await?;
         let json_response: Value = serde_json::from_str(&response_text)?;
 
-        eprintln!("[Bridge] Received session initialization response: {}", json_response);
+        eprintln!("[Bridge] Received session initialization response: {json_response}");
         Ok(json_response)
     }
 }
