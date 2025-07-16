@@ -72,7 +72,11 @@ spec:
         - name: {{ .name }}
           {{- if .configMap }}
           configMap:
+            {{- if eq .configMap.name "mcp-proxy-config" }}
+            name: {{ include "mcp-proxy.configMapName" $ }}
+            {{- else }}
             name: {{ .configMap.name }}
+            {{- end }}
           {{- else if .emptyDir }}
           emptyDir: {}
           {{- end }}

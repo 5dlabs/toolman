@@ -1,17 +1,3 @@
-# Build stage
-FROM rust:latest AS builder
-
-WORKDIR /app
-
-# Copy manifests
-COPY Cargo.toml Cargo.lock ./
-
-# Copy source code
-COPY src ./src
-
-# Build for release
-RUN cargo build --release --bin toolman-http
-
 # Runtime stage - Use Alpine with Docker CLI for running Docker-based MCP servers
 FROM alpine:latest
 
@@ -61,8 +47,10 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
 # Install minimal Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 
-# Copy the binary from builder
-COPY --from=builder /app/target/release/toolman-http /usr/local/bin/toolman-http
+# Copy the prebuilt binaries from CI/CD artifacts
+COPY toolman-http-linux /usr/local/bin/toolman-http
+COPY toolman-linux /usr/local/bin/toolman
+RUN chmod +x /usr/local/bin/toolman-http /usr/local/bin/toolman
 
 # Create non-root user
 RUN adduser -D -u 1000 -s /bin/bash mcp
