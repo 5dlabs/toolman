@@ -17,7 +17,7 @@ pub fn setup_integration_tests() {
         env_logger::Builder::from_default_env()
             .filter_level(log::LevelFilter::Info)
             .init();
-        
+
         println!("Integration test environment initialized");
     });
 }

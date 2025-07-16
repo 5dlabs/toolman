@@ -1,3 +1,4 @@
+use crate::config::{ClientInfo, SessionConfig, SessionSettings};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -5,7 +6,6 @@ use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-use crate::config::{SessionConfig, ClientInfo, SessionSettings};
 
 /// Configuration for tool filtering in the stdio wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +84,7 @@ impl StdioWrapper {
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
             let servers_config: crate::config::ServersConfig = serde_json::from_str(&content)?;
-            
+
             // Create session config from servers config
             let session_config = SessionConfig {
                 client_info: ClientInfo {
@@ -100,7 +100,7 @@ impl StdioWrapper {
                     auto_start: true,
                 },
             };
-            
+
             eprintln!(
                 "[Bridge] Loaded session config from: {}",
                 config_path.display()
@@ -318,7 +318,7 @@ impl StdioWrapper {
                 match Self::load_session_config(&self.working_dir) {
                     Ok(Some(session_config)) => {
                         eprintln!("[Bridge] Sending session-based initialization");
-                        
+
                         // Send session-based initialization to HTTP server
                         let init_with_session = json!({
                             "jsonrpc": "2.0",
@@ -328,12 +328,13 @@ impl StdioWrapper {
                                 "sessionConfig": session_config
                             }
                         });
-                        
+
                         // Forward to HTTP server
                         let _response = self.rt.block_on(async {
-                            self.forward_initialization_with_session(&init_with_session).await
+                            self.forward_initialization_with_session(&init_with_session)
+                                .await
                         })?;
-                        
+
                         // Return standard MCP response to client
                         Ok(Some(json!({
                             "jsonrpc": "2.0",
@@ -393,7 +394,7 @@ impl StdioWrapper {
                         })))
                     }
                 }
-            },
+            }
             "notifications/initialized" => {
                 // This is a notification, no response needed
                 Ok(None)

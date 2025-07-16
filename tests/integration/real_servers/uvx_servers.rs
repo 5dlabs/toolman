@@ -8,15 +8,15 @@ use crate::common::*;
 #[tokio::test]
 async fn test_fetch_server_uvx() -> Result<()> {
     crate::setup_integration_tests();
-    
+
     // Check if UVX is available
     if !check_runtime_available("uvx").await {
         println!("Skipping UVX fetch test: uvx not available");
         return Ok(());
     }
-    
+
     let config = create_uvx_server_config("mcp-server-fetch", vec![]);
-    
+
     let mut server = match TestServer::start(config).await {
         Ok(server) => server,
         Err(e) => {
@@ -24,26 +24,31 @@ async fn test_fetch_server_uvx() -> Result<()> {
             return Ok(());
         }
     };
-    
+
     // Run comprehensive validation
     let report = ProtocolValidator::run_comprehensive_validation(&mut server).await?;
-    
+
     if !report.is_healthy() {
         println!("Server validation failed, but continuing with specific tests");
     }
-    
+
     // Test fetch-specific functionality
     CommonTestScenarios::test_fetch_server(&mut server).await?;
-    
+
     // Test specific fetch operations
     println!("Testing fetch operations...");
-    
+
     // Test fetching a simple URL
-    let fetch_result = server.call_tool("fetch", json!({
-        "url": "https://httpbin.org/get",
-        "method": "GET"
-    })).await;
-    
+    let fetch_result = server
+        .call_tool(
+            "fetch",
+            json!({
+                "url": "https://httpbin.org/get",
+                "method": "GET"
+            }),
+        )
+        .await;
+
     match fetch_result {
         Ok(response) => {
             println!("✅ HTTP GET fetch successful: {}", response);
@@ -60,20 +65,25 @@ async fn test_fetch_server_uvx() -> Result<()> {
             println!("❌ HTTP GET fetch failed: {}", e);
         }
     }
-    
+
     // Test POST request
-    let post_result = server.call_tool("fetch", json!({
-        "url": "https://httpbin.org/post",
-        "method": "POST",
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json!({
-            "test": "data",
-            "from": "mcp-integration-test"
-        })
-    })).await;
-    
+    let post_result = server
+        .call_tool(
+            "fetch",
+            json!({
+                "url": "https://httpbin.org/post",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "body": json!({
+                    "test": "data",
+                    "from": "mcp-integration-test"
+                })
+            }),
+        )
+        .await;
+
     match post_result {
         Ok(response) => {
             println!("✅ HTTP POST fetch successful: {}", response);
@@ -90,17 +100,22 @@ async fn test_fetch_server_uvx() -> Result<()> {
             println!("❌ HTTP POST fetch failed: {}", e);
         }
     }
-    
+
     // Test fetch with custom headers
-    let headers_result = server.call_tool("fetch", json!({
-        "url": "https://httpbin.org/headers",
-        "method": "GET",
-        "headers": {
-            "User-Agent": "MCP-Integration-Test/1.0",
-            "X-Test-Header": "integration-test"
-        }
-    })).await;
-    
+    let headers_result = server
+        .call_tool(
+            "fetch",
+            json!({
+                "url": "https://httpbin.org/headers",
+                "method": "GET",
+                "headers": {
+                    "User-Agent": "MCP-Integration-Test/1.0",
+                    "X-Test-Header": "integration-test"
+                }
+            }),
+        )
+        .await;
+
     match headers_result {
         Ok(response) => {
             println!("✅ HTTP fetch with custom headers successful: {}", response);
@@ -117,13 +132,18 @@ async fn test_fetch_server_uvx() -> Result<()> {
             println!("❌ HTTP fetch with custom headers failed: {}", e);
         }
     }
-    
+
     // Test error handling with invalid URL
-    let error_result = server.call_tool("fetch", json!({
-        "url": "not-a-valid-url",
-        "method": "GET"
-    })).await;
-    
+    let error_result = server
+        .call_tool(
+            "fetch",
+            json!({
+                "url": "not-a-valid-url",
+                "method": "GET"
+            }),
+        )
+        .await;
+
     match error_result {
         Ok(_) => {
             println!("⚠️  Expected error for invalid URL, but got success");
@@ -132,66 +152,66 @@ async fn test_fetch_server_uvx() -> Result<()> {
             println!("✅ Correctly handled invalid URL error: {}", e);
         }
     }
-    
+
     let _ = server.shutdown().await;
     println!("✅ UVX fetch server test completed");
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_python_mcp_server_uvx() -> Result<()> {
     crate::setup_integration_tests();
-    
+
     // Check if UVX is available
     if !check_runtime_available("uvx").await {
         println!("Skipping UVX Python MCP test: uvx not available");
         return Ok(());
     }
-    
+
     // Test a generic Python MCP server (if available)
     // This test can be expanded when we identify a good Python MCP server to test with
     println!("Python MCP server test with UVX - placeholder for future implementation");
-    
+
     // For now, just test that UVX can run Python
     if check_command_available("uvx", &["python", "--version"]).await {
         println!("✅ UVX can run Python commands");
     } else {
         println!("❌ UVX cannot run Python commands");
     }
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_uvx_environment_setup() -> Result<()> {
     crate::setup_integration_tests();
-    
+
     // Test that UVX can properly set up isolated environments
     if !check_runtime_available("uvx").await {
         println!("Skipping UVX environment test: uvx not available");
         return Ok(());
     }
-    
+
     // Test basic UVX functionality
     println!("Testing UVX environment setup...");
-    
+
     // Test UVX help command
     if check_command_available("uvx", &["--help"]).await {
         println!("✅ UVX help command works");
     } else {
         println!("❌ UVX help command failed");
     }
-    
+
     // Test UVX version
     if check_command_available("uvx", &["--version"]).await {
         println!("✅ UVX version command works");
     } else {
         println!("❌ UVX version command failed");
     }
-    
+
     println!("✅ UVX environment test completed");
-    
+
     Ok(())
 }
 

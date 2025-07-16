@@ -21,30 +21,38 @@ impl HttpSseTestClient {
             client: reqwest::Client::new(),
         }
     }
-    
-    pub async fn send_request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+
+    pub async fn send_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let request_payload = json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": method,
             "params": params
         });
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(format!("{}/message", self.base_url))
             .header("Content-Type", "application/json")
             .json(&request_payload)
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("HTTP request failed: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "HTTP request failed: {}",
+                response.status()
+            ));
         }
-        
+
         let response_json: serde_json::Value = response.json().await?;
         Ok(response_json)
     }
-    
+
     pub async fn initialize(&self) -> Result<serde_json::Value> {
         let init_params = json!({
             "protocolVersion": "2024-11-05",
@@ -59,81 +67,94 @@ impl HttpSseTestClient {
                 "version": "1.0.0"
             }
         });
-        
+
         let response = self.send_request("initialize", init_params).await?;
-        
+
         if let Some(error) = response.get("error") {
             return Err(anyhow::anyhow!("Initialize failed: {}", error));
         }
-        
-        response.get("result")
+
+        response
+            .get("result")
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("No result in initialize response"))
     }
-    
+
     pub async fn list_tools(&self) -> Result<serde_json::Value> {
         let response = self.send_request("tools/list", json!({})).await?;
-        
+
         if let Some(error) = response.get("error") {
             return Err(anyhow::anyhow!("List tools failed: {}", error));
         }
-        
-        response.get("result")
+
+        response
+            .get("result")
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("No result in tools/list response"))
     }
-    
-    pub async fn call_tool(&self, tool_name: &str, arguments: serde_json::Value) -> Result<serde_json::Value> {
+
+    pub async fn call_tool(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let params = json!({
             "name": tool_name,
             "arguments": arguments
         });
-        
+
         let response = self.send_request("tools/call", params).await?;
-        
+
         if let Some(error) = response.get("error") {
             return Err(anyhow::anyhow!("Tool call failed: {}", error));
         }
-        
-        response.get("result")
+
+        response
+            .get("result")
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("No result in tools/call response"))
     }
-    
+
     pub async fn test_sse_connection(&self) -> Result<()> {
         // Test that the SSE endpoint is accessible
-        let sse_response = self.client
+        let sse_response = self
+            .client
             .get(&self.base_url)
             .header("Accept", "text/event-stream")
             .send()
             .await?;
-        
+
         if !sse_response.status().is_success() {
-            return Err(anyhow::anyhow!("SSE endpoint not accessible: {}", sse_response.status()));
+            return Err(anyhow::anyhow!(
+                "SSE endpoint not accessible: {}",
+                sse_response.status()
+            ));
         }
-        
+
         // Check that the response has the correct content type
-        let content_type = sse_response.headers()
+        let content_type = sse_response
+            .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
-        
+
         if content_type.contains("text/event-stream") {
             println!("✅ SSE endpoint has correct content type");
         } else {
             println!("⚠️  SSE endpoint content type: {}", content_type);
         }
-        
+
         Ok(())
     }
-    
+
     pub async fn health_check(&self) -> Result<()> {
         // Test basic connectivity
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/health", self.base_url))
             .send()
             .await;
-        
+
         match response {
             Ok(resp) if resp.status().is_success() => {
                 println!("✅ HTTP health check passed");
@@ -156,16 +177,16 @@ impl HttpSseTestClient {
 #[tokio::test]
 async fn test_rust_docs_http_sse_server() -> Result<()> {
     crate::setup_integration_tests();
-    
+
     let server_url = get_remote_server_url();
     println!("Testing Rust Docs HTTP/SSE server at: {}", server_url);
-    
+
     let client = HttpSseTestClient::new(server_url.clone());
-    
+
     // Test basic connectivity
     println!("Testing basic connectivity...");
     let connectivity_result = timeout(Duration::from_secs(10), client.health_check()).await;
-    
+
     match connectivity_result {
         Ok(Ok(_)) => {
             println!("✅ Basic connectivity test passed");
@@ -179,11 +200,11 @@ async fn test_rust_docs_http_sse_server() -> Result<()> {
             return Ok(()); // Skip test if server is not reachable
         }
     }
-    
+
     // Test SSE endpoint
     println!("Testing SSE endpoint...");
     let sse_result = timeout(Duration::from_secs(10), client.test_sse_connection()).await;
-    
+
     match sse_result {
         Ok(Ok(_)) => {
             println!("✅ SSE endpoint test passed");
@@ -195,24 +216,24 @@ async fn test_rust_docs_http_sse_server() -> Result<()> {
             println!("❌ SSE endpoint test timed out");
         }
     }
-    
+
     // Test MCP protocol initialization
     println!("Testing MCP protocol initialization...");
     let init_result = timeout(Duration::from_secs(10), client.initialize()).await;
-    
+
     match init_result {
         Ok(Ok(response)) => {
             println!("✅ MCP initialization successful: {}", response);
-            
+
             // Validate initialization response
             if let Some(protocol_version) = response.get("protocolVersion") {
                 println!("Protocol version: {}", protocol_version);
             }
-            
+
             if let Some(capabilities) = response.get("capabilities") {
                 println!("Server capabilities: {}", capabilities);
             }
-            
+
             if let Some(server_info) = response.get("serverInfo") {
                 println!("Server info: {}", server_info);
             }
@@ -226,15 +247,15 @@ async fn test_rust_docs_http_sse_server() -> Result<()> {
             return Ok(()); // Skip remaining tests if initialization times out
         }
     }
-    
+
     // Test tools listing
     println!("Testing tools listing...");
     let tools_result = timeout(Duration::from_secs(10), client.list_tools()).await;
-    
+
     match tools_result {
         Ok(Ok(response)) => {
             println!("✅ Tools listing successful: {}", response);
-            
+
             // Validate tools response
             if let Some(tools) = response.get("tools").and_then(|t| t.as_array()) {
                 println!("Available tools:");
@@ -243,14 +264,18 @@ async fn test_rust_docs_http_sse_server() -> Result<()> {
                         println!("  - {}", name);
                     }
                 }
-                
+
                 // Test calling a tool if available
                 if let Some(first_tool) = tools.first() {
                     if let Some(tool_name) = first_tool.get("name").and_then(|n| n.as_str()) {
                         println!("Testing tool call: {}", tool_name);
-                        
-                        let tool_result = timeout(Duration::from_secs(15), client.call_tool(tool_name, json!({}))).await;
-                        
+
+                        let tool_result = timeout(
+                            Duration::from_secs(15),
+                            client.call_tool(tool_name, json!({})),
+                        )
+                        .await;
+
                         match tool_result {
                             Ok(Ok(response)) => {
                                 println!("✅ Tool call successful: {}", response);
@@ -273,15 +298,22 @@ async fn test_rust_docs_http_sse_server() -> Result<()> {
             println!("❌ Tools listing timed out");
         }
     }
-    
+
     // Test specific Rust docs functionality (if available)
     println!("Testing Rust docs specific functionality...");
-    
+
     // Try to search for Rust documentation
-    let search_result = timeout(Duration::from_secs(15), client.call_tool("search", json!({
-        "query": "Vec"
-    }))).await;
-    
+    let search_result = timeout(
+        Duration::from_secs(15),
+        client.call_tool(
+            "search",
+            json!({
+                "query": "Vec"
+            }),
+        ),
+    )
+    .await;
+
     match search_result {
         Ok(Ok(response)) => {
             println!("✅ Rust docs search successful: {}", response);
@@ -293,29 +325,36 @@ async fn test_rust_docs_http_sse_server() -> Result<()> {
             println!("❌ Rust docs search timed out");
         }
     }
-    
+
     println!("✅ Rust Docs HTTP/SSE server test completed");
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_http_sse_error_handling() -> Result<()> {
     crate::setup_integration_tests();
-    
+
     let server_url = get_remote_server_url();
     println!("Testing HTTP/SSE error handling...");
-    
+
     let client = HttpSseTestClient::new(server_url.clone());
-    
+
     // Test invalid method
     println!("Testing invalid method call...");
-    let invalid_result = timeout(Duration::from_secs(10), client.send_request("invalid_method", json!({}))).await;
-    
+    let invalid_result = timeout(
+        Duration::from_secs(10),
+        client.send_request("invalid_method", json!({})),
+    )
+    .await;
+
     match invalid_result {
         Ok(Ok(response)) => {
             if let Some(error) = response.get("error") {
-                println!("✅ Server correctly returned error for invalid method: {}", error);
+                println!(
+                    "✅ Server correctly returned error for invalid method: {}",
+                    error
+                );
             } else {
                 println!("⚠️  Server should have returned error for invalid method");
             }
@@ -327,14 +366,21 @@ async fn test_http_sse_error_handling() -> Result<()> {
             println!("❌ Invalid method test timed out");
         }
     }
-    
+
     // Test invalid tool call
     println!("Testing invalid tool call...");
-    let invalid_tool_result = timeout(Duration::from_secs(10), client.call_tool("non_existent_tool", json!({}))).await;
-    
+    let invalid_tool_result = timeout(
+        Duration::from_secs(10),
+        client.call_tool("non_existent_tool", json!({})),
+    )
+    .await;
+
     match invalid_tool_result {
         Ok(Ok(response)) => {
-            println!("⚠️  Server should have failed for non-existent tool: {}", response);
+            println!(
+                "⚠️  Server should have failed for non-existent tool: {}",
+                response
+            );
         }
         Ok(Err(e)) => {
             println!("✅ Server correctly handled invalid tool call: {}", e);
@@ -343,25 +389,25 @@ async fn test_http_sse_error_handling() -> Result<()> {
             println!("❌ Invalid tool call test timed out");
         }
     }
-    
+
     println!("✅ HTTP/SSE error handling test completed");
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_http_sse_performance() -> Result<()> {
     crate::setup_integration_tests();
-    
+
     let server_url = get_remote_server_url();
     println!("Testing HTTP/SSE performance...");
-    
+
     let _client = HttpSseTestClient::new(server_url.clone());
-    
+
     // Test multiple concurrent requests
     println!("Testing concurrent requests...");
     let mut handles = Vec::new();
-    
+
     for i in 0..5 {
         let client_clone = HttpSseTestClient::new(server_url.clone());
         let handle = tokio::spawn(async move {
@@ -372,10 +418,10 @@ async fn test_http_sse_performance() -> Result<()> {
         });
         handles.push(handle);
     }
-    
+
     let mut successful_requests = 0;
     let mut total_duration = Duration::from_secs(0);
-    
+
     for handle in handles {
         match handle.await {
             Ok((i, Ok(_), duration)) => {
@@ -391,15 +437,15 @@ async fn test_http_sse_performance() -> Result<()> {
             }
         }
     }
-    
+
     if successful_requests > 0 {
         let average_duration = total_duration / successful_requests;
         println!("✅ Average request duration: {:?}", average_duration);
         println!("✅ Successful requests: {}/5", successful_requests);
     }
-    
+
     println!("✅ HTTP/SSE performance test completed");
-    
+
     Ok(())
 }
 
@@ -413,7 +459,7 @@ mod tests {
         assert_eq!(client.base_url, "http://example.com");
         println!("✅ HTTP/SSE client creation test passed");
     }
-    
+
     #[tokio::test]
     async fn test_remote_server_url() {
         let url = get_remote_server_url();

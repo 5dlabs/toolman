@@ -131,7 +131,8 @@ impl McpTestClient {
                 }
             }
             Err(anyhow::anyhow!("No response received"))
-        }).await??;
+        })
+        .await??;
 
         Ok(response)
     }
@@ -164,25 +165,30 @@ impl McpTestClient {
         });
 
         let response = self.send_request("initialize", init_params).await?;
-        
+
         if let Some(error) = response.error {
             return Err(anyhow::anyhow!("Initialize failed: {}", error));
         }
 
         // Send initialized notification
-        self.send_notification("notifications/initialized", json!({})).await?;
+        self.send_notification("notifications/initialized", json!({}))
+            .await?;
 
-        response.result.ok_or_else(|| anyhow::anyhow!("No result in initialize response"))
+        response
+            .result
+            .ok_or_else(|| anyhow::anyhow!("No result in initialize response"))
     }
 
     pub async fn list_tools(&mut self) -> Result<Value> {
         let response = self.send_request("tools/list", json!({})).await?;
-        
+
         if let Some(error) = response.error {
             return Err(anyhow::anyhow!("List tools failed: {}", error));
         }
 
-        response.result.ok_or_else(|| anyhow::anyhow!("No result in tools/list response"))
+        response
+            .result
+            .ok_or_else(|| anyhow::anyhow!("No result in tools/list response"))
     }
 
     pub async fn call_tool(&mut self, tool_name: &str, arguments: Value) -> Result<Value> {
@@ -192,17 +198,19 @@ impl McpTestClient {
         });
 
         let response = self.send_request("tools/call", params).await?;
-        
+
         if let Some(error) = response.error {
             return Err(anyhow::anyhow!("Tool call failed: {}", error));
         }
 
-        response.result.ok_or_else(|| anyhow::anyhow!("No result in tools/call response"))
+        response
+            .result
+            .ok_or_else(|| anyhow::anyhow!("No result in tools/call response"))
     }
 
     pub async fn ping(&mut self) -> Result<()> {
         let response = self.send_request("ping", json!({})).await?;
-        
+
         if let Some(error) = response.error {
             return Err(anyhow::anyhow!("Ping failed: {}", error));
         }
@@ -220,8 +228,9 @@ impl McpTestClient {
 
     pub async fn shutdown(&mut self) -> Result<()> {
         // Send shutdown notification
-        self.send_notification("notifications/cancelled", json!({})).await?;
-        
+        self.send_notification("notifications/cancelled", json!({}))
+            .await?;
+
         // Wait a bit for graceful shutdown
         tokio::time::sleep(Duration::from_millis(100)).await;
 
