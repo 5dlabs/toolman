@@ -405,9 +405,10 @@ jobs:
 
   # Test Helm chart
   test-helm:
-    needs: changes
+    needs: [changes, version, build-docker]
     if: always() && (needs.changes.outputs.helm == 'true' || github.event_name == 'push')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -437,22 +438,41 @@ jobs:
         run: |
           echo "🚀 Testing Helm chart deployment..."
 
+          # Debug: Check cluster status
+          echo "🔍 Checking cluster status..."
+          kubectl cluster-info
+          kubectl get nodes
+          kubectl get pods --all-namespaces | head -20
+
           # Wait for cluster to be fully ready
+          echo "🔍 Waiting for nodes to be ready..."
           kubectl wait --for=condition=ready node --all --timeout=300s
 
           # Create MCP namespace if it doesn't exist
+          echo "🔍 Creating MCP namespace..."
           kubectl create namespace mcp --dry-run=client -o yaml | kubectl apply -f -
+          kubectl get namespaces | grep mcp
           
           # Install with test values and longer timeout
+          echo "🔍 Installing Helm chart..."
           helm install test-toolman ./charts/mcp-proxy \
             --namespace mcp \
-            --set image.repository=nginx \
-            --set image.tag=latest \
-            --wait --timeout=300s
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ needs.version.outputs.version }} \
+            --wait --timeout=300s \
+            --debug
 
           # Verify deployment
+          echo "🔍 Checking deployment status..."
           kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp --timeout=180s
+          kubectl get all -n mcp
+          
+          echo "🔍 Waiting for pods to be ready..."
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp --timeout=180s || {
+            echo "❌ Pod readiness check failed, debugging..."
+            kubectl describe pods -l app.kubernetes.io/name=mcp-proxy -n mcp
+            kubectl logs -l app.kubernetes.io/name=mcp-proxy -n mcp --tail=50 || echo "No logs available"
+          }
           
           # Debug: Check ConfigMap and deployment
           echo "🔍 Debugging ConfigMap and deployment..."
