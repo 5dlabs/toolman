@@ -25,24 +25,24 @@ async fn test_filesystem_server_npx() -> Result<()> {
         // Instead of using the nested test_files subdirectory, use /tmp which is more standard
         "/tmp/mcp_test".to_string()
     });
-    
+
     // For NPX server, we need to use the same directory where files are actually created
     let actual_test_files_dir = test_data_dir.clone();
-    
+
     // Ensure test files exist in the actual test directory
     println!("NPX server configured for directory: {}", test_data_dir);
     println!("Actual test files directory: {}", actual_test_files_dir);
-    
+
     // Create test files in the actual test directory AND ensure its parent exists
     std::fs::create_dir_all(&actual_test_files_dir)?;
-    
+
     // Also ensure the parent directory exists (NPX server may check this)
     if let Some(parent) = std::path::Path::new(&actual_test_files_dir).parent() {
         std::fs::create_dir_all(parent)?;
     }
     let test_file_path = format!("{}/test.txt", actual_test_files_dir);
     let test_json_path = format!("{}/test.json", actual_test_files_dir);
-    
+
     if !std::path::Path::new(&test_file_path).exists() {
         println!("Creating test files in: {}", actual_test_files_dir);
         std::fs::write(
@@ -54,7 +54,7 @@ async fn test_filesystem_server_npx() -> Result<()> {
             r#"{"message": "Hello from MCP integration test"}"#,
         )?;
     }
-    
+
     let config = create_npx_server_config(
         "@modelcontextprotocol/server-filesystem",
         vec![".".to_string()],
@@ -87,14 +87,22 @@ async fn test_filesystem_server_npx() -> Result<()> {
     // Use relative file paths since the server runs in the test directory
     let test_file_path = "test.txt";
     println!("Attempting to read file: {}", test_file_path);
-    
+
     // Debug: Check what directories exist
     println!("🔍 Debugging directory structure:");
-    println!("  test_data_dir: {} (exists: {})", test_data_dir, std::path::Path::new(&test_data_dir).exists());
+    println!(
+        "  test_data_dir: {} (exists: {})",
+        test_data_dir,
+        std::path::Path::new(&test_data_dir).exists()
+    );
     if let Some(parent) = std::path::Path::new(&test_data_dir).parent() {
-        println!("  parent: {} (exists: {})", parent.display(), parent.exists());
+        println!(
+            "  parent: {} (exists: {})",
+            parent.display(),
+            parent.exists()
+        );
     }
-    
+
     // Verify the file exists before trying to read it
     let full_test_file_path = format!("{}/{}", test_data_dir, test_file_path);
     if std::path::Path::new(&full_test_file_path).exists() {
@@ -125,7 +133,7 @@ async fn test_filesystem_server_npx() -> Result<()> {
     match read_result {
         Ok(response) => {
             println!("✅ File read successful: {}", response);
-            
+
             // Check if this is an error response
             if let Some(is_error) = response.get("isError") {
                 if is_error.as_bool().unwrap_or(false) {
@@ -138,7 +146,7 @@ async fn test_filesystem_server_npx() -> Result<()> {
                     return Ok(()); // Skip assertion if file doesn't exist
                 }
             }
-            
+
             // Verify the content
             if let Some(content) = response.get("content") {
                 if let Some(text) = content.get(0).and_then(|c| c.get("text")) {

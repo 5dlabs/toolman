@@ -67,7 +67,11 @@ impl TestServer {
 
         let client = timeout(
             Duration::from_secs(config.timeout_secs),
-            McpTestClient::new(&config.command, &config.args, config.working_directory.as_deref()),
+            McpTestClient::new(
+                &config.command,
+                &config.args,
+                config.working_directory.as_deref(),
+            ),
         )
         .await
         .context("Server startup timeout")?
