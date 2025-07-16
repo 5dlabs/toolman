@@ -4,9 +4,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use anyhow::Result;
-<<<<<<< HEAD
-use axum::{extract::State, http::StatusCode, response::Json, routing::{get, post}, Router};
-=======
 use axum::{
     extract::State,
     http::StatusCode,
@@ -14,8 +11,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use chrono;
->>>>>>> fa75bab315f006b6574478f9f7e86fbf377c668d
+use chrono::Utc;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1703,7 +1699,7 @@ async fn health_check() -> Json<Value> {
     Json(json!({
         "status": "ok",
         "service": "mcp-proxy",
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "timestamp": Utc::now().to_rfc3339()
     }))
 }
 
@@ -1723,7 +1719,7 @@ async fn readiness_check(State(state): State<BridgeState>) -> Result<Json<Value>
         "status": "ready",
         "service": "mcp-proxy",
         "servers_configured": servers.len(),
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "timestamp": Utc::now().to_rfc3339()
     })))
 }
 

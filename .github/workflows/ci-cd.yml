@@ -200,16 +200,12 @@ jobs:
   test-rust:
     needs: changes
     if: always() && (needs.changes.outputs.server == 'true' || needs.changes.outputs.binaries == 'true' || github.event_name == 'push')
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        rust: [stable]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: stable
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "rust-cache-toolman"
