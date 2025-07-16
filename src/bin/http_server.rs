@@ -19,10 +19,11 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager};
+use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager, SessionConfig, ExecutionContext};
 use toolman::resolve_working_directory;
 use toolman::tool_suggester::ToolSuggester;
 use tower_http::cors::CorsLayer;
+use uuid::Uuid;
 
 /// Simple HTTP MCP Bridge Server
 #[derive(Parser)]
@@ -639,6 +640,8 @@ pub struct BridgeState {
     connection_pool: Arc<ServerConnectionPool>,
     // Current working directory for user context (per-request)
     current_working_dir: Arc<RwLock<Option<std::path::PathBuf>>>,
+    // Session configurations (session_id -> SessionConfig)
+    sessions: Arc<RwLock<HashMap<String, SessionConfig>>>,
 }
 
 // JSON-RPC 2.0 message types
@@ -695,6 +698,7 @@ impl BridgeState {
             available_tools: Arc::new(RwLock::new(HashMap::new())),
             connection_pool,
             current_working_dir: Arc::new(RwLock::new(None)),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Discover all available tools at startup
@@ -1421,22 +1425,111 @@ impl BridgeState {
             request.method
         );
         match request.method.as_str() {
-            "initialize" => JsonRpcResponse {
-                jsonrpc: "2.0".to_string(),
-                id: request.id,
-                result: Some(json!({
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {
-                            "listChanged": true
+            "initialize" => {
+                // Check if this is a session-based initialization with configuration
+                if let Some(params) = &request.params {
+                    if let Some(session_config) = params.get("sessionConfig") {
+                        // Parse session configuration
+                        match serde_json::from_value::<SessionConfig>(session_config.clone()) {
+                            Ok(config) => {
+                                // Generate session ID if not provided
+                                let session_id = config.client_info.session_id.clone()
+                                    .unwrap_or_else(|| Uuid::new_v4().to_string());
+                                
+                                // Store session configuration
+                                let sessions = self.sessions.clone();
+                                let session_id_clone = session_id.clone();
+                                let config_clone = config.clone();
+                                tokio::spawn(async move {
+                                    let mut sessions_lock = sessions.write().await;
+                                    sessions_lock.insert(session_id_clone, config_clone);
+                                });
+                                
+                                // Update working directory if provided
+                                if let Some(working_dir) = &config.client_info.working_directory {
+                                    let current_working_dir = self.current_working_dir.clone();
+                                    let working_dir_clone = working_dir.clone();
+                                    tokio::spawn(async move {
+                                        let mut wd_lock = current_working_dir.write().await;
+                                        *wd_lock = Some(std::path::PathBuf::from(working_dir_clone));
+                                    });
+                                }
+                                
+                                println!("🔧 Session-based initialization for session: {}", session_id);
+                                println!("🔧 Client: {} v{}", config.client_info.name, config.client_info.version);
+                                println!("🔧 Servers configured: {}", config.servers.len());
+                                
+                                JsonRpcResponse {
+                                    jsonrpc: "2.0".to_string(),
+                                    id: request.id,
+                                    result: Some(json!({
+                                        "protocolVersion": "2024-11-05",
+                                        "capabilities": {
+                                            "tools": {
+                                                "listChanged": true
+                                            }
+                                        },
+                                        "serverInfo": {
+                                            "name": "mcp-proxy",
+                                            "version": "1.0.0"
+                                        },
+                                        "sessionId": session_id
+                                    })),
+                                    error: None,
+                                }
+                            }
+                            Err(e) => {
+                                JsonRpcResponse {
+                                    jsonrpc: "2.0".to_string(),
+                                    id: request.id,
+                                    result: None,
+                                    error: Some(JsonRpcError {
+                                        code: -32602,
+                                        message: format!("Invalid session configuration: {}", e),
+                                    }),
+                                }
+                            }
                         }
-                    },
-                    "serverInfo": {
-                        "name": "toolman",
-                        "version": "1.0.0"
+                    } else {
+                        // Standard MCP initialization without session config
+                        JsonRpcResponse {
+                            jsonrpc: "2.0".to_string(),
+                            id: request.id,
+                            result: Some(json!({
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {
+                                    "tools": {
+                                        "listChanged": true
+                                    }
+                                },
+                                "serverInfo": {
+                                    "name": "mcp-proxy",
+                                    "version": "1.0.0"
+                                }
+                            })),
+                            error: None,
+                        }
                     }
-                })),
-                error: None,
+                } else {
+                    // Standard MCP initialization without parameters
+                    JsonRpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        id: request.id,
+                        result: Some(json!({
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {
+                                "tools": {
+                                    "listChanged": true
+                                }
+                            },
+                            "serverInfo": {
+                                "name": "mcp-proxy",
+                                "version": "1.0.0"
+                            }
+                        })),
+                        error: None,
+                    }
+                }
             },
             "tools/list" => {
                 println!(

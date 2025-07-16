@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  mcp-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    command: ["sh", "-c", "cargo build --bin toolman-http && ./target/debug/toolman-http --port 3000"]
+    networks:
+      - mcp-test-network
+
+  # Test client container for running integration tests
+  test-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      - mcp-proxy
+    volumes:
+      - .:/app
+      - ./test_output:/test_output
+    working_dir: /app
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+      - MCP_PROXY_URL=http://mcp-proxy:3000/mcp
+    command: ["cargo", "test", "session_config_tests", "--test", "integration", "--", "--nocapture"]
+    networks:
+      - mcp-test-network
+
+  # Claude Code test environment
+  claude-code:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude
+    depends_on:
+      - mcp-proxy
+    volumes:
+      - .:/workspace/mcp-proxy
+      - ./test_output:/test_output
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspace
+    environment:
+      - MCP_PROXY_URL=http://mcp-proxy:3000/mcp
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    networks:
+      - mcp-test-network
+    # Keep container running for interactive testing
+    tty: true
+    stdin_open: true
+
+networks:
+  mcp-test-network:
+    driver: bridge

@@ -19,7 +19,7 @@ pub mod context;
 pub mod config;
 
 // Re-export key types for convenience
-pub use config::{ServerConfig, SystemConfigManager};
+pub use config::{ServerConfig, SystemConfigManager, SessionConfig, ClientInfo, SessionSettings, ExecutionContext};
 pub use context::{ContextConfig, ContextManager};
 pub use stdio_wrapper::StdioWrapper;
 

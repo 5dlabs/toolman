@@ -1,0 +1,105 @@
+# Test-specific Dockerfile that builds from our current source
+FROM alpine:latest
+
+# Install system dependencies and all runtimes using Alpine packages
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    git \
+    bash \
+    # Node.js runtime
+    nodejs \
+    npm \
+    # Python runtime
+    python3 \
+    python3-dev \
+    py3-pip \
+    # Go runtime
+    go \
+    # Java runtime
+    openjdk17-jre \
+    # .NET runtime (if available)
+    dotnet8-runtime \
+    # Docker CLI for Docker-based MCP servers
+    docker-cli \
+    # Core utilities
+    coreutils \
+    findutils \
+    grep \
+    sed \
+    tar \
+    gzip \
+    unzip \
+    # Additional libraries for compatibility
+    libstdc++ \
+    gcompat \
+    # Test and build dependencies
+    build-base \
+    openssh-client \
+    rsync \
+    # OpenSSL development packages
+    openssl \
+    openssl-dev \
+    pkgconfig \
+    || true
+
+# Create symbolic links for Python
+RUN ln -sf python3 /usr/bin/python || true
+
+# Install UV for Python package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
+    mv /root/.local/bin/uv /usr/local/bin/ 2>/dev/null || \
+    mv /root/.cargo/bin/uv /usr/local/bin/ 2>/dev/null || \
+    echo "UV installed successfully"
+
+# Install Rust toolchain globally - using nightly for edition2024 support
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+ENV PATH="/root/.cargo/bin:$PATH"
+RUN /root/.cargo/bin/rustup default nightly
+
+# Copy Rust installation for the mcp user
+RUN cp -r /root/.cargo /tmp/cargo && \
+    cp -r /root/.rustup /tmp/rustup
+
+# Set up Docker-in-Docker for testing Docker-based MCP servers
+RUN apk add --no-cache docker-compose
+
+# Create non-root user and set up home directory
+RUN adduser -D -u 1000 -s /bin/bash mcp && \
+    mkdir -p /home/mcp/.cargo /home/mcp/.rustup && \
+    cp -r /tmp/cargo/* /home/mcp/.cargo/ && \
+    cp -r /tmp/rustup/* /home/mcp/.rustup/ && \
+    chown -R mcp:mcp /home/mcp/.cargo /home/mcp/.rustup
+
+# Copy test files and source code
+COPY . /app
+WORKDIR /app
+RUN chown -R mcp:mcp /app
+
+# Create test directories with proper permissions
+RUN mkdir -p /test_data /test_output && \
+    chmod 755 /test_data /test_output && \
+    chown -R mcp:mcp /test_data /test_output
+
+# Create some test files that the filesystem server can access
+RUN echo "This is a test file for MCP server integration tests." > /test_data/test.txt && \
+    echo '{"message": "Hello from MCP integration test"}' > /test_data/test.json && \
+    chmod 644 /test_data/*.txt /test_data/*.json && \
+    chown mcp:mcp /test_data/*.txt /test_data/*.json
+
+# Set environment variables for testing
+ENV MCP_TEST_DATA_DIR=/test_data
+ENV MCP_TEST_OUTPUT_DIR=/test_output
+ENV RUST_LOG=info
+ENV RUST_BACKTRACE=1
+
+# Switch back to mcp user for security
+USER mcp
+
+# Set up Rust environment for mcp user
+ENV PATH="/home/mcp/.cargo/bin:$PATH"
+ENV RUSTUP_HOME=/home/mcp/.rustup
+ENV CARGO_HOME=/home/mcp/.cargo
+
+# Default command runs the integration tests
+CMD ["cargo", "test", "--test", "integration", "--", "--nocapture"]

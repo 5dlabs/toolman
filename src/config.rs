@@ -16,6 +16,22 @@ pub struct ToolConfig {
     pub enabled: bool,
 }
 
+/// Execution context for MCP servers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ExecutionContext {
+    /// Server runs locally in agent context (for filesystem access, etc.)
+    Local,
+    /// Server runs remotely on server-side (for web APIs, databases, etc.)
+    Remote,
+}
+
+impl Default for ExecutionContext {
+    fn default() -> Self {
+        ExecutionContext::Remote
+    }
+}
+
 /// Configuration for a single MCP server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -47,12 +63,61 @@ pub struct ServerConfig {
     /// Individual tool configurations with enabled flags
     #[serde(default)]
     pub tools: HashMap<String, ToolConfig>,
+    /// Execution context: where the server should run
+    #[serde(rename = "executionContext", default)]
+    pub execution_context: ExecutionContext,
 }
 
 /// Root configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServersConfig {
     pub servers: HashMap<String, ServerConfig>,
+}
+
+/// Session-based configuration sent during MCP initialization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionConfig {
+    /// Client information
+    pub client_info: ClientInfo,
+    /// Server configurations for this session
+    pub servers: HashMap<String, ServerConfig>,
+    /// Session-specific settings
+    pub session_settings: SessionSettings,
+}
+
+/// Client information for session tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientInfo {
+    pub name: String,
+    pub version: String,
+    pub working_directory: Option<String>,
+    pub session_id: Option<String>,
+}
+
+/// Session-specific settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSettings {
+    /// Request timeout in milliseconds
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+    /// Maximum concurrent requests
+    #[serde(default = "default_max_concurrent")]
+    pub max_concurrent: u32,
+    /// Whether to auto-start servers
+    #[serde(default = "default_auto_start")]
+    pub auto_start: bool,
+}
+
+fn default_timeout() -> u64 {
+    30000
+}
+
+fn default_max_concurrent() -> u32 {
+    10
+}
+
+fn default_auto_start() -> bool {
+    true
 }
 
 /// Configuration manager for loading and managing server configs

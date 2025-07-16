@@ -1,0 +1,30 @@
+{
+  "client_info": {
+    "name": "test-stdio-client",
+    "version": "1.0.0",
+    "working_directory": "/tmp/test",
+    "session_id": "stdio-test-session-456"
+  },
+  "servers": {
+    "filesystem": {
+      "name": "Test Filesystem",
+      "description": "Test filesystem server",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "url": null,
+      "enabled": true,
+      "always_active": false,
+      "env": {},
+      "auto_start": true,
+      "working_directory": null,
+      "tools": {},
+      "execution_context": "local"
+    }
+  },
+  "session_settings": {
+    "timeout_ms": 30000,
+    "max_concurrent": 10,
+    "auto_start": true
+  }
+}

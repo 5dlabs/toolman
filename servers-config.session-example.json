@@ -1,0 +1,42 @@
+{
+  "servers": {
+    "filesystem": {
+      "name": "Local Filesystem",
+      "description": "Access local files (runs in agent context)",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+      "enabled": true,
+      "executionContext": "local"
+    },
+    "memory": {
+      "name": "Memory Storage",
+      "description": "In-memory storage for session data (runs in agent context)",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "enabled": true,
+      "executionContext": "local"
+    },
+    "web-search": {
+      "name": "Web Search",
+      "description": "Search the web using Brave Search API (runs server-side)",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "enabled": true,
+      "executionContext": "remote",
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "remote-docs": {
+      "name": "Remote Documentation Server",
+      "description": "Documentation server via HTTP (runs server-side)",
+      "transport": "http",
+      "url": "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/mcp",
+      "enabled": true,
+      "executionContext": "remote"
+    }
+  }
+}

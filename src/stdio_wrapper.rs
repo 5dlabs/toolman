@@ -4,6 +4,8 @@ use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
+use uuid::Uuid;
+use crate::config::{SessionConfig, ClientInfo, SessionSettings};
 
 /// Configuration for tool filtering in the stdio wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +70,48 @@ impl StdioWrapper {
                 config_path.display()
             );
             Ok(ToolFilterConfig::default())
+        }
+    }
+
+    /// Load session configuration from servers-config.json
+    fn load_session_config(working_dir: &Option<String>) -> Result<Option<SessionConfig>> {
+        let config_path = if let Some(dir) = working_dir {
+            PathBuf::from(dir).join("servers-config.json")
+        } else {
+            PathBuf::from("servers-config.json")
+        };
+
+        if config_path.exists() {
+            let content = std::fs::read_to_string(&config_path)?;
+            let servers_config: crate::config::ServersConfig = serde_json::from_str(&content)?;
+            
+            // Create session config from servers config
+            let session_config = SessionConfig {
+                client_info: ClientInfo {
+                    name: "mcp-stdio-wrapper".to_string(),
+                    version: "1.0.0".to_string(),
+                    working_directory: working_dir.clone(),
+                    session_id: Some(Uuid::new_v4().to_string()),
+                },
+                servers: servers_config.servers,
+                session_settings: SessionSettings {
+                    timeout_ms: 30000,
+                    max_concurrent: 10,
+                    auto_start: true,
+                },
+            };
+            
+            eprintln!(
+                "[Bridge] Loaded session config from: {}",
+                config_path.display()
+            );
+            Ok(Some(session_config))
+        } else {
+            eprintln!(
+                "[Bridge] No session config found at {}, using header-based approach",
+                config_path.display()
+            );
+            Ok(None)
         }
     }
 
@@ -269,22 +313,87 @@ impl StdioWrapper {
         let id = request.get("id").cloned();
 
         match method {
-            "initialize" => Ok(Some(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {
-                            "listChanged": true
-                        }
-                    },
-                    "serverInfo": {
-                        "name": "mcp-bridge-stdio-wrapper",
-                        "version": "1.0.0"
+            "initialize" => {
+                // Try to load and send session configuration
+                match Self::load_session_config(&self.working_dir) {
+                    Ok(Some(session_config)) => {
+                        eprintln!("[Bridge] Sending session-based initialization");
+                        
+                        // Send session-based initialization to HTTP server
+                        let init_with_session = json!({
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "initialize",
+                            "params": {
+                                "sessionConfig": session_config
+                            }
+                        });
+                        
+                        // Forward to HTTP server
+                        let _response = self.rt.block_on(async {
+                            self.forward_initialization_with_session(&init_with_session).await
+                        })?;
+                        
+                        // Return standard MCP response to client
+                        Ok(Some(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {
+                                    "tools": {
+                                        "listChanged": true
+                                    }
+                                },
+                                "serverInfo": {
+                                    "name": "mcp-bridge-stdio-wrapper",
+                                    "version": "1.0.0"
+                                }
+                            }
+                        })))
+                    }
+                    Ok(None) => {
+                        // No session config, use standard initialization
+                        eprintln!("[Bridge] Using standard initialization (no session config)");
+                        Ok(Some(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {
+                                    "tools": {
+                                        "listChanged": true
+                                    }
+                                },
+                                "serverInfo": {
+                                    "name": "mcp-bridge-stdio-wrapper",
+                                    "version": "1.0.0"
+                                }
+                            }
+                        })))
+                    }
+                    Err(e) => {
+                        eprintln!("[Bridge] Error loading session config: {}", e);
+                        // Fall back to standard initialization
+                        Ok(Some(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {
+                                "protocolVersion": "2024-11-05",
+                                "capabilities": {
+                                    "tools": {
+                                        "listChanged": true
+                                    }
+                                },
+                                "serverInfo": {
+                                    "name": "mcp-bridge-stdio-wrapper",
+                                    "version": "1.0.0"
+                                }
+                            }
+                        })))
                     }
                 }
-            }))),
+            },
             "notifications/initialized" => {
                 // This is a notification, no response needed
                 Ok(None)
@@ -358,6 +467,23 @@ impl StdioWrapper {
         let response_text = response.text().await?;
         let json_response: Value = serde_json::from_str(&response_text)?;
 
+        Ok(json_response)
+    }
+
+    async fn forward_initialization_with_session(&self, request: &Value) -> Result<Value> {
+        eprintln!("[Bridge] Forwarding session-based initialization to HTTP server");
+
+        let response = self
+            .client
+            .post(&self.http_base_url)
+            .json(request)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+        let json_response: Value = serde_json::from_str(&response_text)?;
+
+        eprintln!("[Bridge] Received session initialization response: {}", json_response);
         Ok(json_response)
     }
 }
