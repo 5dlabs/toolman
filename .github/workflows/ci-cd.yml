@@ -456,27 +456,27 @@ jobs:
             --wait --timeout=300s
 
           # Verify deployment
-          kubectl get pods -l app.kubernetes.io/name=mcp-proxy
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=180s
+          kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp --timeout=180s
           
           # Debug: Check ConfigMap and deployment
           echo "🔍 Debugging ConfigMap and deployment..."
-          kubectl get configmap -l app.kubernetes.io/name=mcp-proxy
-          kubectl describe configmap -l app.kubernetes.io/name=mcp-proxy
-          kubectl describe deployment -l app.kubernetes.io/name=mcp-proxy | grep -A 10 -B 5 "Mounts\|Volume"
+          kubectl get configmap -l app.kubernetes.io/name=mcp-proxy -n mcp
+          kubectl describe configmap -l app.kubernetes.io/name=mcp-proxy -n mcp
+          kubectl describe deployment -l app.kubernetes.io/name=mcp-proxy -n mcp | grep -A 10 -B 5 "Mounts\|Volume"
           
           # Debug: Check pod details
-          POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=mcp-proxy -o jsonpath='{.items[0].metadata.name}')
+          POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp -o jsonpath='{.items[0].metadata.name}')
           echo "🔍 Pod details for $POD_NAME:"
-          kubectl describe pod $POD_NAME | grep -A 20 -B 5 "Mounts\|Volume"
+          kubectl describe pod $POD_NAME -n mcp | grep -A 20 -B 5 "Mounts\|Volume"
           
           # Debug: Check if config file exists in pod
           echo "🔍 Checking mounted config in pod..."
-          kubectl exec $POD_NAME -- ls -la /config/ || echo "Config directory not found"
-          kubectl exec $POD_NAME -- cat /config/servers-config.json || echo "Config file not found"
+          kubectl exec $POD_NAME -n mcp -- ls -la /config/ || echo "Config directory not found"
+          kubectl exec $POD_NAME -n mcp -- cat /config/servers-config.json || echo "Config file not found"
 
           # Cleanup
-          helm uninstall test-toolman --timeout=120s
+          helm uninstall test-toolman --namespace mcp --timeout=120s
 
           echo "✅ Helm chart deployment test passed"
 

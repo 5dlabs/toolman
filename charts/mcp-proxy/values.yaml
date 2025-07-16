@@ -98,7 +98,7 @@ autoscaling:
 volumes:
   - name: config
     configMap:
-      name: mcp-proxy-config
+      name: toolman-config
   - name: tmp
     emptyDir: {}
 
