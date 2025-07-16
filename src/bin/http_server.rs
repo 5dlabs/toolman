@@ -4,7 +4,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use anyhow::Result;
-use axum::{extract::State, http::StatusCode, response::Json, routing::post, Router};
+use axum::{extract::State, http::StatusCode, response::Json, routing::{get, post}, Router};
+use chrono;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1687,6 +1688,37 @@ impl BridgeState {
     }
 }
 
+// Liveness probe - just checks if HTTP server is alive
+async fn health_check() -> Json<Value> {
+    Json(json!({
+        "status": "ok",
+        "service": "mcp-proxy",
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+// Readiness probe - checks if MCP servers are available and ready
+async fn readiness_check(
+    State(state): State<BridgeState>,
+) -> Result<Json<Value>, StatusCode> {
+    let config_manager = state.system_config_manager.read().await;
+    let servers = config_manager.get_servers();
+    
+    // Check if we have any servers configured
+    if servers.is_empty() {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    
+    // For now, just check if servers are configured
+    // TODO: In the future, we could ping each server to check actual availability
+    Ok(Json(json!({
+        "status": "ready",
+        "service": "mcp-proxy", 
+        "servers_configured": servers.len(),
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    })))
+}
+
 async fn mcp_endpoint(
     State(state): State<BridgeState>,
     headers: axum::http::HeaderMap,
@@ -1822,6 +1854,8 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/mcp", post(mcp_endpoint))
+        .route("/health", get(health_check))
+        .route("/ready", get(readiness_check))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
