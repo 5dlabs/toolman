@@ -53,13 +53,16 @@ pub struct TestServer {
 
 impl TestServer {
     pub async fn start(config: ServerConfig) -> Result<Self> {
-        println!("Starting server: {} with command: {} {:?}", 
-                 config.name, config.command, config.args);
+        println!(
+            "Starting server: {} with command: {} {:?}",
+            config.name, config.command, config.args
+        );
 
         let client = timeout(
             Duration::from_secs(config.timeout_secs),
-            McpTestClient::new(&config.command, &config.args)
-        ).await
+            McpTestClient::new(&config.command, &config.args),
+        )
+        .await
         .context("Server startup timeout")?
         .context("Failed to create MCP client")?;
 
@@ -69,7 +72,9 @@ impl TestServer {
         let mut server = Self { config, client };
 
         // Test basic connectivity
-        server.health_check().await
+        server
+            .health_check()
+            .await
             .context("Server health check failed after startup")?;
 
         println!("Server {} started successfully", server.config.name);
@@ -98,7 +103,11 @@ impl TestServer {
         self.client.list_tools().await
     }
 
-    pub async fn call_tool(&mut self, tool_name: &str, arguments: serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn call_tool(
+        &mut self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         self.client.call_tool(tool_name, arguments).await
     }
 
@@ -114,16 +123,12 @@ impl TestServer {
 
 pub async fn check_runtime_available(runtime: &str) -> bool {
     match runtime {
-        "node" | "npm" | "npx" => {
-            check_command_available("npx", &["--version"]).await
-        }
+        "node" | "npm" | "npx" => check_command_available("npx", &["--version"]).await,
         "python" | "uvx" => {
-            check_command_available("uvx", &["--version"]).await ||
-            check_command_available("python", &["--version"]).await
+            check_command_available("uvx", &["--version"]).await
+                || check_command_available("python", &["--version"]).await
         }
-        "docker" => {
-            check_command_available("docker", &["--version"]).await
-        }
+        "docker" => check_command_available("docker", &["--version"]).await,
         _ => false,
     }
 }
@@ -144,32 +149,40 @@ pub async fn wait_for_server_ready(server: &mut TestServer, max_attempts: u32) -
         attempts += 1;
         sleep(Duration::from_millis(500)).await;
     }
-    Err(anyhow::anyhow!("Server not ready after {} attempts", max_attempts))
+    Err(anyhow::anyhow!(
+        "Server not ready after {} attempts",
+        max_attempts
+    ))
 }
 
 // Helper function to create common server configurations
 pub fn create_npx_server_config(package: &str, args: Vec<String>) -> ServerConfig {
     let mut full_args = vec!["-y".to_string(), package.to_string()];
     full_args.extend(args);
-    
-    ServerConfig::new(&format!("npx-{package}"), "npx", full_args)
-        .with_setup_delay(2000) // NPX servers need more time to download and start
+
+    ServerConfig::new(&format!("npx-{package}"), "npx", full_args).with_setup_delay(2000)
+    // NPX servers need more time to download and start
 }
 
 pub fn create_uvx_server_config(package: &str, args: Vec<String>) -> ServerConfig {
     let mut full_args = vec![package.to_string()];
     full_args.extend(args);
-    
-    ServerConfig::new(&format!("uvx-{package}"), "uvx", full_args)
-        .with_setup_delay(3000) // UVX servers need time to install dependencies
+
+    ServerConfig::new(&format!("uvx-{package}"), "uvx", full_args).with_setup_delay(3000)
+    // UVX servers need time to install dependencies
 }
 
 pub fn create_docker_server_config(image: &str, args: Vec<String>) -> ServerConfig {
-    let mut full_args = vec!["run".to_string(), "-i".to_string(), "--rm".to_string(), image.to_string()];
+    let mut full_args = vec![
+        "run".to_string(),
+        "-i".to_string(),
+        "--rm".to_string(),
+        image.to_string(),
+    ];
     full_args.extend(args);
-    
-    ServerConfig::new(&format!("docker-{image}"), "docker", full_args)
-        .with_setup_delay(5000) // Docker servers need time to pull and start
+
+    ServerConfig::new(&format!("docker-{image}"), "docker", full_args).with_setup_delay(5000)
+    // Docker servers need time to pull and start
 }
 
 #[cfg(test)]
