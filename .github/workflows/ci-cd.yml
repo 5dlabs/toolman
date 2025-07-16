@@ -445,8 +445,12 @@ jobs:
           # Wait for cluster to be fully ready
           kubectl wait --for=condition=ready node --all --timeout=300s
 
+          # Create MCP namespace if it doesn't exist
+          kubectl create namespace mcp --dry-run=client -o yaml | kubectl apply -f -
+          
           # Install with test values and longer timeout
           helm install test-toolman ./charts/mcp-proxy \
+            --namespace mcp \
             --set image.repository=nginx \
             --set image.tag=latest \
             --wait --timeout=300s
@@ -454,6 +458,22 @@ jobs:
           # Verify deployment
           kubectl get pods -l app.kubernetes.io/name=mcp-proxy
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=180s
+          
+          # Debug: Check ConfigMap and deployment
+          echo "🔍 Debugging ConfigMap and deployment..."
+          kubectl get configmap -l app.kubernetes.io/name=mcp-proxy
+          kubectl describe configmap -l app.kubernetes.io/name=mcp-proxy
+          kubectl describe deployment -l app.kubernetes.io/name=mcp-proxy | grep -A 10 -B 5 "Mounts\|Volume"
+          
+          # Debug: Check pod details
+          POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=mcp-proxy -o jsonpath='{.items[0].metadata.name}')
+          echo "🔍 Pod details for $POD_NAME:"
+          kubectl describe pod $POD_NAME | grep -A 20 -B 5 "Mounts\|Volume"
+          
+          # Debug: Check if config file exists in pod
+          echo "🔍 Checking mounted config in pod..."
+          kubectl exec $POD_NAME -- ls -la /config/ || echo "Config directory not found"
+          kubectl exec $POD_NAME -- cat /config/servers-config.json || echo "Config file not found"
 
           # Cleanup
           helm uninstall test-toolman --timeout=120s
