@@ -112,10 +112,8 @@ async fn test_filesystem_server_npx() -> Result<()> {
         // List directory contents for debugging
         if let Ok(entries) = std::fs::read_dir(&test_data_dir) {
             println!("Directory contents of {}:", test_data_dir);
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    println!("  - {}", entry.file_name().to_string_lossy());
-                }
+            for entry in entries.flatten() {
+                println!("  - {}", entry.file_name().to_string_lossy());
             }
         }
     }
