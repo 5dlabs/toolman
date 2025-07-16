@@ -140,9 +140,7 @@ impl SystemConfigManager {
             Err(e) => {
                 // Attempt to restore from backup on failure
                 if let Err(restore_err) = self.restore_from_backup(&backup_path) {
-                    eprintln!(
-                        "Failed to restore from backup after save failure: {restore_err}"
-                    );
+                    eprintln!("Failed to restore from backup after save failure: {restore_err}");
                 }
                 Err(e)
             }
@@ -293,9 +291,7 @@ impl SystemConfigManager {
         // Remove files beyond the 5 most recent
         for (path, _) in backup_files.iter().skip(5) {
             if let Err(e) = std::fs::remove_file(path) {
-                eprintln!(
-                    "Warning: Failed to remove old backup file {path:?}: {e}"
-                );
+                eprintln!("Warning: Failed to remove old backup file {path:?}: {e}");
             }
         }
 

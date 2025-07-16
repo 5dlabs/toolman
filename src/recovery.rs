@@ -390,9 +390,7 @@ impl ServerRecoveryManager {
 
     /// Switch to a fallback server
     async fn switch_to_fallback(&self, primary: &str, fallback: &str) -> BridgeResult<()> {
-        println!(
-            "🔄 Switching from primary server '{primary}' to fallback '{fallback}'"
-        );
+        println!("🔄 Switching from primary server '{primary}' to fallback '{fallback}'");
 
         // Update fallback mappings
         {

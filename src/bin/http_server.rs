@@ -229,7 +229,7 @@ impl ServerConnectionPool {
             let fs_args = vec![
                 "-y".to_string(),
                 "@modelcontextprotocol/server-filesystem".to_string(),
-                user_dir.to_string_lossy().to_string()
+                user_dir.to_string_lossy().to_string(),
             ];
 
             cmd.args(&fs_args);
