@@ -47,8 +47,8 @@ COPY toolman-http-linux /usr/local/bin/toolman-http
 COPY toolman-linux /usr/local/bin/toolman
 RUN chmod +x /usr/local/bin/toolman-http /usr/local/bin/toolman
 
-# Create non-root user
-RUN useradd -m -u 1000 -s /bin/bash mcp
+# Create non-root user (use a different UID since 1000 exists)
+RUN useradd -m -u 1001 -s /bin/bash mcp
 
 # Create directories for configs
 RUN mkdir -p /config && \
