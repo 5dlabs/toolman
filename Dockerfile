@@ -12,19 +12,30 @@ COPY src ./src
 # Build for release
 RUN cargo build --release --bin toolman-http
 
-# Runtime stage - Use Debian base for comprehensive runtime support
-FROM debian:bookworm-slim
+# Runtime stage - Use Alpine with Docker CLI for running Docker-based MCP servers
+FROM alpine:latest
 
-# Install system dependencies and package managers
-RUN apt-get update && apt-get install -y \
+# Install system dependencies and all runtimes using Alpine packages
+RUN apk add --no-cache \
     ca-certificates \
     curl \
     git \
     bash \
-    gnupg \
-    lsb-release \
-    apt-transport-https \
-    software-properties-common \
+    # Node.js runtime
+    nodejs \
+    npm \
+    # Python runtime
+    python3 \
+    python3-dev \
+    py3-pip \
+    # Go runtime
+    go \
+    # Java runtime
+    openjdk17-jre \
+    # .NET runtime (if available)
+    dotnet8-runtime \
+    # Docker CLI for Docker-based MCP servers
+    docker-cli \
     # Core utilities
     coreutils \
     findutils \
@@ -33,64 +44,28 @@ RUN apt-get update && apt-get install -y \
     tar \
     gzip \
     unzip \
-    && rm -rf /var/lib/apt/lists/*
+    # Additional libraries for compatibility
+    libstdc++ \
+    gcompat \
+    || true
 
-# Install Docker CLI (not daemon) for Docker-based MCP servers
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
-    apt-get update && \
-    apt-get install -y docker-ce-cli && \
-    rm -rf /var/lib/apt/lists/*
+# Create symbolic links for Python
+RUN ln -sf python3 /usr/bin/python || true
 
-# Install Node.js and npm for Node.js-based MCP servers
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g npm@latest && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Python and Python package managers for Python-based MCP servers
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python3-venv \
-    && ln -sf python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for faster Python package management
+# Install UV for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
     mv /root/.local/bin/uv /usr/local/bin/ 2>/dev/null || \
     mv /root/.cargo/bin/uv /usr/local/bin/ 2>/dev/null || \
     echo "UV installed successfully"
 
-# Install Go for Go-based MCP servers
-RUN curl -fsSL https://golang.org/dl/go1.21.5.linux-$(dpkg --print-architecture).tar.gz | tar -xzC /usr/local && \
-    ln -s /usr/local/go/bin/go /usr/local/bin/go && \
-    ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
-
-# Install Rust for Rust-based MCP servers (minimal runtime)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal && \
-    echo 'export PATH="/root/.cargo/bin:$PATH"' >> /etc/profile && \
-    ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo && \
-    ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc
-
-# Install Java for Java-based MCP servers
-RUN apt-get update && apt-get install -y openjdk-17-jre-headless && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install .NET for .NET-based MCP servers (if available for architecture)
-RUN curl -fsSL https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -o packages-microsoft-prod.deb && \
-    dpkg -i packages-microsoft-prod.deb && \
-    rm packages-microsoft-prod.deb && \
-    apt-get update && \
-    (apt-get install -y dotnet-runtime-8.0 || apt-get install -y dotnet-runtime-6.0 || echo "No .NET runtime available for this architecture") && \
-    rm -rf /var/lib/apt/lists/*
+# Install minimal Rust toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 
 # Copy the binary from builder
 COPY --from=builder /app/target/release/toolman-http /usr/local/bin/toolman-http
 
 # Create non-root user
-RUN useradd -m -u 1000 -s /bin/bash mcp
+RUN adduser -D -u 1000 -s /bin/bash mcp
 
 # Create directories for configs
 RUN mkdir -p /config && \
@@ -99,9 +74,11 @@ RUN mkdir -p /config && \
 # Set up environment for all runtimes
 ENV PORT=3000 \
     PROJECT_DIR=/config \
-    PATH="/root/.cargo/bin:/usr/local/go/bin:$PATH" \
+    PATH="/usr/local/go/bin:/root/.cargo/bin:/usr/lib/jvm/java-17-openjdk/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     NODE_ENV=production \
+    JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
+    DOTNET_ROOT=/usr/lib/dotnet \
     DOCKER_HOST=unix:///var/run/docker.sock
 
 # Create entrypoint script to handle environment setup
@@ -110,14 +87,13 @@ RUN cat > /entrypoint.sh << 'EOF'
 set -e
 
 # Set up runtime paths
-export PATH="/usr/local/bin:/usr/local/go/bin:/root/.cargo/bin:$PATH"
+export PATH="/usr/local/bin:/usr/local/go/bin:/root/.cargo/bin:/usr/lib/jvm/java-17-openjdk/bin:$PATH"
 
 # Check if Docker socket is available (for Docker-based MCP servers)
 if [ -S "/var/run/docker.sock" ]; then
-    # Add mcp user to docker group if socket exists
-    if ! groups mcp | grep -q docker; then
-        usermod -aG docker mcp 2>/dev/null || true
-    fi
+    echo "Docker socket available - Docker-based MCP servers can run containers"
+else
+    echo "Docker socket not available - Docker-based MCP servers may not work"
 fi
 
 # Run the application

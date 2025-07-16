@@ -1,3 +1,8 @@
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::match_single_binding)]
+#![allow(clippy::redundant_pattern_matching)]
+#![allow(clippy::too_many_arguments)]
+
 use anyhow::Result;
 use axum::{extract::State, http::StatusCode, response::Json, routing::post, Router};
 use clap::Parser;
