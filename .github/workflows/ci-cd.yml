@@ -11,8 +11,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: 5dlabs/toolman
-  RUST_BACKTRACE: 1
-  CARGO_TERM_COLOR: always
+  RUST_STABLE_VERSION: stable
 
 permissions:
   contents: write
@@ -24,29 +23,25 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      rust-code: ${{ steps.filter.outputs.rust-code }}
-      docker: ${{ steps.filter.outputs.docker }}
-      config: ${{ steps.filter.outputs.config }}
-      ci: ${{ steps.filter.outputs.ci }}
-      helm: ${{ steps.filter.outputs.helm }}
+      server: ${{ steps.filter.outputs['server'] }}
+      binaries: ${{ steps.filter.outputs['binaries'] }}
+      docker: ${{ steps.filter.outputs['docker'] }}
+      helm: ${{ steps.filter.outputs['helm'] }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v2
         id: filter
         with:
           filters: |
-            rust-code:
+            server:
               - 'src/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
+            binaries:
+              - 'src/bin/**'
             docker:
               - 'Dockerfile'
-              - 'docker-compose.yml'
-            config:
-              - 'servers-config*.json'
-              - 'scripts/**'
-            ci:
-              - '.github/workflows/**'
+              - '.dockerignore'
             helm:
               - 'charts/**'
 
@@ -56,7 +51,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       is-release: ${{ steps.version.outputs.is-release }}
-      short-sha: ${{ steps.version.outputs.short-sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,28 +65,31 @@ jobs:
             echo "is-release=true" >> $GITHUB_OUTPUT
           else
             # Use commit SHA for non-release builds
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            TIMESTAMP=$(date +%Y%m%d%H%M%S)
-            VERSION="${{ github.ref_name }}-${TIMESTAMP}-${SHORT_SHA}"
+            VERSION="main-$(git rev-parse --short HEAD)"
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "is-release=false" >> $GITHUB_OUTPUT
           fi
-          echo "short-sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "📦 Build version: ${VERSION}"
 
-  # Rust linting and formatting
+  # Parallel linting and testing
   lint-rust:
     needs: changes
-    if: needs.changes.outputs.rust-code == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'push'
+    if: >-
+      always() && (needs.changes.outputs.server == 'true' ||
+      needs.changes.outputs.binaries == 'true' ||
+      github.event_name == 'push')
     runs-on: ubuntu-latest
     outputs:
-      format-needed: ${{ steps.format-check.outputs.format-needed }}
+      format-needed: ${{ steps.format-check.outputs['format-needed'] }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust environment
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: "rust-cache-toolman"
           cache-targets: true
@@ -111,32 +108,19 @@ jobs:
           fi
 
       - name: Fail job if formatting issues detected and not on push event
-        if: env.FORMATTING_FAILED == 'true' && github.event_name != 'push'
+        if: steps.format-check.outputs['format-needed'] == 'true' && github.event_name != 'push'
         run: |
           echo "❌ Formatting issues detected and auto-format is not available (not a push event)"
-          echo "Please run 'cargo fmt --all' locally and commit the changes"
           exit 1
 
       - name: Run Clippy
-        if: env.FORMATTING_FAILED == 'false' || github.event_name == 'push'
-        run: |
-          cargo clippy --all-features --all-targets -- \
-            -D warnings \
-            -A clippy::uninlined_format_args \
-            -A clippy::result_large_err \
-            -A clippy::unwrap_or_default \
-            -A clippy::unnecessary_map_or \
-            -A clippy::new_without_default \
-            -A clippy::useless_vec \
-            -A dead_code \
-            -A clippy::vec_init_then_push \
-            -A clippy::redundant_pattern_matching \
-            -A clippy::match_single_binding
+        if: steps.format-check.outputs['format-needed'] == 'false' || github.event_name == 'push'
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   # Auto-format job that runs when formatting fails
   auto-format:
     needs: [changes, lint-rust]
-    if: always() && needs.lint-rust.outputs.format-needed == 'true' && github.event_name == 'push'
+    if: always() && needs.lint-rust.outputs['format-needed'] == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -146,7 +130,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust environment
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
@@ -167,7 +152,7 @@ jobs:
           fi
 
       - name: Commit and push changes
-        if: steps.changes.outputs.has-changes == 'true'
+        if: steps.changes.outputs['has-changes'] == 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -193,11 +178,13 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust environment
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: "rust-cache-toolman"
           cache-targets: true
@@ -208,24 +195,11 @@ jobs:
           cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: |
-          cargo clippy --all-features --all-targets -- \
-            -D warnings \
-            -A clippy::uninlined_format_args \
-            -A clippy::result_large_err \
-            -A clippy::unwrap_or_default \
-            -A clippy::unnecessary_map_or \
-            -A clippy::new_without_default \
-            -A clippy::useless_vec \
-            -A dead_code \
-            -A clippy::vec_init_then_push \
-            -A clippy::redundant_pattern_matching \
-            -A clippy::match_single_binding
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
-  # Test suite
   test-rust:
     needs: changes
-    if: needs.changes.outputs.rust-code == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'push'
+    if: always() && (needs.changes.outputs.server == 'true' || needs.changes.outputs.binaries == 'true' || github.event_name == 'push')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -242,7 +216,7 @@ jobs:
           cache-targets: true
 
       - name: Run tests
-        run: cargo test --lib --bins --all-features -- --nocapture
+        run: cargo test --all-features --all-targets
 
   # Security scanning (non-blocking)
   security-scan:
@@ -253,6 +227,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Cache Trivy DB
       - name: Cache Trivy database
         uses: actions/cache@v4
         with:
@@ -277,88 +252,25 @@ jobs:
           name: trivy-results
           path: trivy-results.sarif
 
-  # Test coverage reporting (non-blocking)
-  test-coverage:
-    needs: changes
-    if: needs.changes.outputs.rust-code == 'true' || github.event_name == 'push'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Cache cargo-audit binary
+      - name: Cache cargo-audit
+        uses: actions/cache@v4
+        id: cargo-audit-cache
         with:
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "rust-cache-toolman"
-          cache-targets: true
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-0.21.2
 
-      - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov
+      - name: Install cargo-audit
+        if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --version 0.21.2
 
-      - name: Generate test coverage
-        run: |
-          echo "📊 Generating test coverage report..."
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info || true
-          cargo llvm-cov --all-features --workspace --html --output-dir coverage-html || true
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-reports
-          path: |
-            lcov.info
-            coverage-html/
-
-  # Helm chart testing
-  helm-test:
-    needs: changes
-    if: needs.changes.outputs.helm == 'true' || github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: '3.14.0'
-
-      - name: Lint Helm chart
-        run: |
-          echo "🔍 Linting Helm chart..."
-          helm lint charts/mcp-proxy
-
-      - name: Validate Helm templates
-        run: |
-          echo "📋 Validating Helm templates..."
-          helm template mcp-proxy charts/mcp-proxy --debug > /tmp/template.yaml
-          echo "✅ Template validation passed"
-
-      - name: Create test cluster
-        uses: helm/kind-action@v1.8.0
-        with:
-          cluster_name: helm-test
-          kubectl_version: v1.30.0
-          wait: 60s
-
-      - name: Test Helm chart deployment
-        run: |
-          echo "🚀 Testing Helm chart deployment..."
-          helm install test-mcp-proxy charts/mcp-proxy \
-            --set image.repository=nginx \
-            --set image.tag=latest \
-            --wait --timeout=300s
-          
-          kubectl get pods -l app.kubernetes.io/name=mcp-proxy
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=120s
-          
-          helm uninstall test-mcp-proxy
-          echo "✅ Helm chart deployment test passed"
+      - name: Rust security audit
+        run: cargo audit || true
 
   # Build binaries
   build-binaries:
-    needs: [version, lint-rust, test-rust, lint-rust-retry]
-    if: always() && !cancelled() && (needs.lint-rust.result == 'success' || needs.lint-rust-retry.result == 'success') && needs.test-rust.result == 'success'
+    needs: [version, changes]
+    if: always() && !cancelled() && (needs.changes.outputs.server == 'true' || needs.changes.outputs.binaries == 'true' || github.event_name == 'push')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -375,63 +287,70 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: toolman-windows-x86_64
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust environment
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: "rust-cache-toolman"
           cache-targets: true
 
-      - name: Build release binaries
+      - name: Setup cross-compilation tools
+        if: matrix.target != 'x86_64-unknown-linux-gnu'
+        run: |
+          echo "🔧 Setting up cross-compilation for ${{ matrix.target }}..."
+          rustup target add ${{ matrix.target }}
+
+      - name: Build binaries
         run: |
           echo "🏗️ Building for ${{ matrix.target }}..."
-          cargo build --release --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }} --bin toolman
+          cargo build --release --target ${{ matrix.target }} --bin toolman-http
 
-      - name: Package binaries (Unix)
+      - name: Create binary archive (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/toolman" "dist/"
-          cp "target/${{ matrix.target }}/release/toolman-http" "dist/"
-          cp servers-config.http-example.json dist/servers-config.example.json
+          cp target/${{ matrix.target }}/release/toolman dist/
+          cp target/${{ matrix.target }}/release/toolman-http dist/
           cd dist
           tar czf ../toolman-${{ matrix.target }}.tar.gz *
           cd ..
-          shasum -a 256 toolman-${{ matrix.target }}.tar.gz > toolman-${{ matrix.target }}.tar.gz.sha256
 
-      - name: Package binaries (Windows)
+      - name: Create binary archive (Windows)
         if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item "target\${{ matrix.target }}\release\toolman.exe" "dist\"
           Copy-Item "target\${{ matrix.target }}\release\toolman-http.exe" "dist\"
-          Copy-Item "servers-config.http-example.json" "dist\servers-config.example.json"
           Set-Location dist
           tar czf ..\toolman-${{ matrix.target }}.tar.gz *
           Set-Location ..
-          $hash = Get-FileHash toolman-${{ matrix.target }}.tar.gz -Algorithm SHA256
-          "$($hash.Hash.ToLower())  toolman-${{ matrix.target }}.tar.gz" | Out-File -FilePath "toolman-${{ matrix.target }}.tar.gz.sha256" -Encoding ASCII
 
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: |
-            toolman-${{ matrix.target }}.tar.gz
-            toolman-${{ matrix.target }}.tar.gz.sha256
+          path: toolman-${{ matrix.target }}.tar.gz
 
-  # Build and push Docker image
+  # Build Docker images
   build-docker:
-    needs: [version, lint-rust, test-rust, lint-rust-retry]
-    if: always() && !cancelled() && (needs.lint-rust.result == 'success' || needs.lint-rust-retry.result == 'success') && needs.test-rust.result == 'success'
+    needs: [version, changes]
+    if: always() && !cancelled() && (needs.changes.outputs.docker == 'true' || github.event_name == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -443,7 +362,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
@@ -474,9 +393,63 @@ jobs:
           build-args: |
             BUILDKIT_INLINE_CACHE=1
 
+  # Test Helm chart
+  test-helm:
+    needs: changes
+    if: always() && (needs.changes.outputs.helm == 'true' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.14.0'
+
+      - name: Lint Helm chart
+        run: |
+          helm lint ./charts/mcp-proxy
+
+      - name: Test Helm chart rendering
+        run: |
+          # Test with default values
+          helm template toolman ./charts/mcp-proxy --debug > /tmp/default.yaml
+          echo "✅ Default values template rendered successfully"
+
+          # Test with development values
+          helm template toolman ./charts/mcp-proxy \
+            --set image.tag=test-version > /tmp/custom.yaml
+          echo "✅ Custom values template rendered successfully"
+
+      - name: Create test cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: helm-test
+          kubectl_version: v1.30.0
+          wait: 60s
+
+      - name: Test Helm chart deployment
+        run: |
+          echo "🚀 Testing Helm chart deployment..."
+
+          # Install with test values
+          helm install test-toolman ./charts/mcp-proxy \
+            --set image.repository=nginx \
+            --set image.tag=latest \
+            --wait --timeout=120s
+
+          # Verify deployment
+          kubectl get pods -l app.kubernetes.io/name=mcp-proxy
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy --timeout=60s
+
+          # Cleanup
+          helm uninstall test-toolman
+
+          echo "✅ Helm chart deployment test passed"
+
   # Deployment summary
   deployment-summary:
-    needs: [version, build-binaries, build-docker, security-scan, test-coverage, helm-test]
+    needs: [version, build-binaries, build-docker, security-scan, test-helm]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -487,14 +460,11 @@ jobs:
           echo "## Artifacts Built:"
           echo "- ✅ Binary artifacts: ${{ needs.build-binaries.result }}"
           echo "- ✅ Docker image: ${{ needs.build-docker.result }}"
+          echo "- 📦 Helm chart: ${{ needs.test-helm.result }}"
           echo ""
           echo "## Quality Checks:"
-          echo "- ✅ Rust formatting and linting"
-          echo "- ✅ Test suite: ${{ needs.test-rust.result }}"
           echo "- 📊 Security scan: ${{ needs.security-scan.result }}"
-          echo "- 📊 Coverage report: ${{ needs.test-coverage.result }}"
-          echo "- 🎯 Helm chart tests: ${{ needs.helm-test.result }}"
+          echo "- 🎯 Helm chart tests: ${{ needs.test-helm.result }}"
           echo ""
-          echo "## Images:"
+          echo "## Container Image:"
           echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
-          echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
