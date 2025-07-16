@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager, SessionConfig};
+use toolman::config::{ServerConfig, SessionConfig, SystemConfigManager as ConfigManager};
 use toolman::resolve_working_directory;
 use toolman::tool_suggester::ToolSuggester;
 use tower_http::cors::CorsLayer;
