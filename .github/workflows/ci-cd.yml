@@ -541,13 +541,13 @@ jobs:
 
       - name: Deploy to production
         run: |
-          echo "🚀 Deploying ${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }} to production..."
+          echo "🚀 Deploying ${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }} to mcp namespace..."
           
           # Example deployment command - customize for your environment
-          # helm upgrade --install mcp-proxy ./charts/mcp-proxy \
+          # helm upgrade --install toolman ./charts/mcp-proxy \
           #   --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
           #   --set image.tag=${{ needs.version.outputs.version }} \
-          #   --namespace production \
+          #   --namespace mcp \
           #   --create-namespace \
           #   --wait --timeout=300s
           
