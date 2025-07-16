@@ -411,11 +411,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: 'v3.14.0'
-
       - name: Lint Helm chart
         run: |
           helm lint ./charts/mcp-proxy
@@ -483,7 +478,7 @@ jobs:
   # Deploy to production
   deploy:
     needs: [version, build-binaries, build-docker, security-scan, test-helm]
-    if: always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -491,11 +486,6 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: 'v3.14.0'
 
       - name: Configure kubectl
         run: |
