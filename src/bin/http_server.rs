@@ -1976,11 +1976,14 @@ impl BridgeState {
                                 let available_tools = self.available_tools.read().await;
                                 let config_manager = self.system_config_manager.read().await;
                                 let _servers = config_manager.get_servers();
-                                
+
                                 let mut tools_by_server = std::collections::HashMap::new();
                                 for (prefixed_name, tool) in available_tools.iter() {
-                                    if let Some((server_name, tool_name)) = prefixed_name.split_once('_') {
-                                        tools_by_server.entry(server_name.to_string())
+                                    if let Some((server_name, tool_name)) =
+                                        prefixed_name.split_once('_')
+                                    {
+                                        tools_by_server
+                                            .entry(server_name.to_string())
                                             .or_insert_with(Vec::new)
                                             .push(json!({
                                                 "name": tool_name,
@@ -2009,91 +2012,91 @@ impl BridgeState {
                                 drop(config_manager);
 
                                 match parse_tool_name_with_servers(tool_name, &available_servers) {
-                                Ok(parsed_tool) => {
-                                    // Get arguments for the tool call
-                                    let mut arguments =
-                                        params.get("arguments").cloned().unwrap_or(json!({}));
+                                    Ok(parsed_tool) => {
+                                        // Get arguments for the tool call
+                                        let mut arguments =
+                                            params.get("arguments").cloned().unwrap_or(json!({}));
 
-                                    // ✨ AUTO-INJECT parameters based on working directory
-                                    if let Some(working_dir) =
-                                        self.current_working_dir.read().await.as_ref()
-                                    {
-                                        if let Some(args_obj) = arguments.as_object_mut() {
-                                            // 🎯 Universal projectRoot injection (for TaskMaster, etc.)
-                                            args_obj.insert(
-                                                "projectRoot".to_string(),
-                                                json!(working_dir.to_string_lossy()),
-                                            );
-                                            println!(
-                                                "🔧 Auto-injected projectRoot: {}",
-                                                working_dir.display()
-                                            );
+                                        // ✨ AUTO-INJECT parameters based on working directory
+                                        if let Some(working_dir) =
+                                            self.current_working_dir.read().await.as_ref()
+                                        {
+                                            if let Some(args_obj) = arguments.as_object_mut() {
+                                                // 🎯 Universal projectRoot injection (for TaskMaster, etc.)
+                                                args_obj.insert(
+                                                    "projectRoot".to_string(),
+                                                    json!(working_dir.to_string_lossy()),
+                                                );
+                                                println!(
+                                                    "🔧 Auto-injected projectRoot: {}",
+                                                    working_dir.display()
+                                                );
 
-                                            // 🎯 Server-specific parameter injection
-                                            // Note: Memory server uses environment variables, not parameters
-                                            // Other servers may need specific parameter injection here
-                                            match parsed_tool.server_name.as_str() {
-                                                _ => {
-                                                    // No additional parameter injection needed yet
-                                                    // Future servers that need working directory as parameters can be added here
+                                                // 🎯 Server-specific parameter injection
+                                                // Note: Memory server uses environment variables, not parameters
+                                                // Other servers may need specific parameter injection here
+                                                match parsed_tool.server_name.as_str() {
+                                                    _ => {
+                                                        // No additional parameter injection needed yet
+                                                        // Future servers that need working directory as parameters can be added here
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
 
-                                    // Get user working directory for context-aware server startup
-                                    let user_working_dir = {
-                                        let wd = self.current_working_dir.read().await;
-                                        wd.clone()
-                                    };
+                                        // Get user working directory for context-aware server startup
+                                        let user_working_dir = {
+                                            let wd = self.current_working_dir.read().await;
+                                            wd.clone()
+                                        };
 
-                                    // Forward to the appropriate server with user context
-                                    match self
-                                        .connection_pool
-                                        .forward_tool_call_with_context(
-                                            &parsed_tool.server_name,
-                                            &parsed_tool.tool_name,
-                                            arguments,
-                                            user_working_dir.as_deref(),
-                                        )
-                                        .await
-                                    {
-                                        Ok(response) => {
-                                            // Extract result from response or return the response directly
-                                            if let Some(result) = response.get("result") {
-                                                result.clone()
-                                            } else {
-                                                response
+                                        // Forward to the appropriate server with user context
+                                        match self
+                                            .connection_pool
+                                            .forward_tool_call_with_context(
+                                                &parsed_tool.server_name,
+                                                &parsed_tool.tool_name,
+                                                arguments,
+                                                user_working_dir.as_deref(),
+                                            )
+                                            .await
+                                        {
+                                            Ok(response) => {
+                                                // Extract result from response or return the response directly
+                                                if let Some(result) = response.get("result") {
+                                                    result.clone()
+                                                } else {
+                                                    response
+                                                }
+                                            }
+                                            Err(e) => {
+                                                json!({
+                                                    "content": [{
+                                                        "type": "text",
+                                                        "text": format!("❌ Error calling tool '{}'\n\n🔍 **Debug Info:**\n- Original tool name: '{}'\n- Parsed as: server='{}', tool='{}'\n- Available servers: [{}]\n- Error: {}\n\n💡 Expected format: {{server_name}}_{{tool_name}}",
+                                                                       tool_name,
+                                                                       tool_name,
+                                                                       parsed_tool.server_name,
+                                                                       parsed_tool.tool_name,
+                                                                       available_servers.join(", "),
+                                                                       e)
+                                                    }]
+                                                })
                                             }
                                         }
-                                        Err(e) => {
-                                            json!({
-                                                "content": [{
-                                                    "type": "text",
-                                                    "text": format!("❌ Error calling tool '{}'\n\n🔍 **Debug Info:**\n- Original tool name: '{}'\n- Parsed as: server='{}', tool='{}'\n- Available servers: [{}]\n- Error: {}\n\n💡 Expected format: {{server_name}}_{{tool_name}}",
-                                                                   tool_name,
-                                                                   tool_name,
-                                                                   parsed_tool.server_name,
-                                                                   parsed_tool.tool_name,
-                                                                   available_servers.join(", "),
-                                                                   e)
-                                                }]
-                                            })
-                                        }
+                                    }
+                                    Err(e) => {
+                                        json!({
+                                            "content": [{
+                                                "type": "text",
+                                                "text": format!("❌ Invalid tool name format\n\n🔍 **Debug Info:**\n- Attempted tool name: '{}'\n- Parse error: {}\n- Available servers: [{}]\n- Expected format: {{server_name}}_{{tool_name}}\n\n📝 **Examples:**\n- memory_read_graph\n- git_git_status\n- task_master_ai_get_tasks",
+                                                               tool_name,
+                                                               e,
+                                                               available_servers.join(", "))
+                                            }]
+                                        })
                                     }
                                 }
-                                Err(e) => {
-                                    json!({
-                                        "content": [{
-                                            "type": "text",
-                                            "text": format!("❌ Invalid tool name format\n\n🔍 **Debug Info:**\n- Attempted tool name: '{}'\n- Parse error: {}\n- Available servers: [{}]\n- Expected format: {{server_name}}_{{tool_name}}\n\n📝 **Examples:**\n- memory_read_graph\n- git_git_status\n- task_master_ai_get_tasks",
-                                                           tool_name,
-                                                           e,
-                                                           available_servers.join(", "))
-                                        }]
-                                    })
-                                }
-                            }
                             }
                         };
 
