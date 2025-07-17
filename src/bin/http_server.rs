@@ -617,11 +617,17 @@ impl ServerConnectionPool {
                             // For SSE, we only need to read the initial chunk with session ID
                             let mut body = response.bytes_stream();
                             use futures::StreamExt;
-                            
+
                             let first_chunk = match body.next().await {
                                 Some(Ok(chunk)) => String::from_utf8_lossy(&chunk).to_string(),
-                                Some(Err(e)) => return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e)),
-                                None => return Err(anyhow::anyhow!("No data received from SSE endpoint")),
+                                Some(Err(e)) => {
+                                    return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e))
+                                }
+                                None => {
+                                    return Err(anyhow::anyhow!(
+                                        "No data received from SSE endpoint"
+                                    ))
+                                }
                             };
 
                             // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
@@ -925,11 +931,17 @@ impl BridgeState {
                             // For SSE, we only need to read the initial chunk with session ID
                             let mut body = response.bytes_stream();
                             use futures::StreamExt;
-                            
+
                             let first_chunk = match body.next().await {
                                 Some(Ok(chunk)) => String::from_utf8_lossy(&chunk).to_string(),
-                                Some(Err(e)) => return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e)),
-                                None => return Err(anyhow::anyhow!("No data received from SSE endpoint")),
+                                Some(Err(e)) => {
+                                    return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e))
+                                }
+                                None => {
+                                    return Err(anyhow::anyhow!(
+                                        "No data received from SSE endpoint"
+                                    ))
+                                }
                             };
 
                             // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
