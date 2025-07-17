@@ -19,15 +19,11 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use toolman::config::{ServerConfig, SessionConfig, SystemConfigManager as ConfigManager};
+use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager};
 use toolman::resolve_working_directory;
-use toolman::session::{SessionInitRequest, SessionInitResponse, ToolSource};
-use toolman::session_store::SessionStore;
-use toolman::tool_suggester::ToolSuggester;
 use tower_http::cors::CorsLayer;
-use uuid::Uuid;
 
-/// Simple HTTP MCP Bridge Server
+/// Toolman HTTP MCP Server
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Args {
@@ -642,10 +638,6 @@ pub struct BridgeState {
     connection_pool: Arc<ServerConnectionPool>,
     // Current working directory for user context (per-request)
     current_working_dir: Arc<RwLock<Option<std::path::PathBuf>>>,
-    // Session configurations (session_id -> SessionConfig) - Legacy, will be replaced by session_store
-    sessions: Arc<RwLock<HashMap<String, SessionConfig>>>,
-    // New session management system
-    session_store: Arc<SessionStore>,
 }
 
 // JSON-RPC 2.0 message types
@@ -696,20 +688,12 @@ impl BridgeState {
         let system_config_manager = Arc::new(RwLock::new(system_config_manager_instance));
         let connection_pool = Arc::new(ServerConnectionPool::new(system_config_manager.clone()));
 
-        // Create session store with global config (placeholder for now)
-        let global_config = Arc::new(toolman::config::ServersConfig {
-            servers: HashMap::new(),
-        });
-        let session_store = Arc::new(SessionStore::new(global_config));
-
         // Create the state
         let state = Self {
             system_config_manager,
             available_tools: Arc::new(RwLock::new(HashMap::new())),
             connection_pool,
             current_working_dir: Arc::new(RwLock::new(None)),
-            sessions: Arc::new(RwLock::new(HashMap::new())),
-            session_store,
         };
 
         // Discover all available tools at startup
@@ -843,13 +827,13 @@ impl BridgeState {
                                     tool.get("description").and_then(|d| d.as_str()),
                                 ) {
                                     Some(Tool {
-                                        name: name.to_string(),
-                                        description: description.to_string(),
-                                        input_schema: tool
-                                            .get("inputSchema")
-                                            .cloned()
-                                            .unwrap_or(json!({})),
-                                        server_name: server_name.to_string(),
+                                    name: name.to_string(),
+                                    description: description.to_string(),
+                                    input_schema: tool
+                                        .get("inputSchema")
+                                        .cloned()
+                                        .unwrap_or(json!({})),
+                                    server_name: server_name.to_string(),
                                     })
                                 } else {
                                     None
@@ -1072,7 +1056,7 @@ impl BridgeState {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                                            "name": "toolman",
+                                        "name": "toolman",
                     "version": "1.0.0"
                 }
             }
@@ -1375,9 +1359,9 @@ impl BridgeState {
                                     name: name.to_string(),
                                     description: description.to_string(),
                                     input_schema: tool
-                                        .get("inputSchema")
-                                        .cloned()
-                                        .unwrap_or(json!({})),
+                                    .get("inputSchema")
+                                    .cloned()
+                                    .unwrap_or(json!({})),
                                     server_name: server_name.to_string(),
                                 })
                             } else {
@@ -1437,117 +1421,23 @@ impl BridgeState {
         );
         match request.method.as_str() {
             "initialize" => {
-                // Check if this is a session-based initialization with configuration
-                if let Some(params) = &request.params {
-                    if let Some(session_config) = params.get("sessionConfig") {
-                        // Parse session configuration
-                        match serde_json::from_value::<SessionConfig>(session_config.clone()) {
-                            Ok(config) => {
-                                // Generate session ID if not provided
-                                let session_id = config
-                                    .client_info
-                                    .session_id
-                                    .clone()
-                                    .unwrap_or_else(|| Uuid::new_v4().to_string());
-
-                                // Store session configuration
-                                let sessions = self.sessions.clone();
-                                let session_id_clone = session_id.clone();
-                                let config_clone = config.clone();
-                                tokio::spawn(async move {
-                                    let mut sessions_lock = sessions.write().await;
-                                    sessions_lock.insert(session_id_clone, config_clone);
-                                });
-
-                                // Update working directory if provided
-                                if let Some(working_dir) = &config.client_info.working_directory {
-                                    let current_working_dir = self.current_working_dir.clone();
-                                    let working_dir_clone = working_dir.clone();
-                                    tokio::spawn(async move {
-                                        let mut wd_lock = current_working_dir.write().await;
-                                        *wd_lock =
-                                            Some(std::path::PathBuf::from(working_dir_clone));
-                                    });
-                                }
-
-                                println!(
-                                    "🔧 Session-based initialization for session: {}",
-                                    session_id
-                                );
-                                println!(
-                                    "🔧 Client: {} v{}",
-                                    config.client_info.name, config.client_info.version
-                                );
-                                println!("🔧 Servers configured: {}", config.servers.len());
-
-                                JsonRpcResponse {
-                                    jsonrpc: "2.0".to_string(),
-                                    id: request.id,
-                                    result: Some(json!({
-                                        "protocolVersion": "2024-11-05",
-                                        "capabilities": {
-                                            "tools": {
-                                                "listChanged": true
-                                            }
-                                        },
-                                        "serverInfo": {
-                                            "name": "mcp-proxy",
-                                            "version": "1.0.0"
-                                        },
-                                        "sessionId": session_id
-                                    })),
-                                    error: None,
-                                }
+                // Standard MCP initialization - simplified, no session complexity
+                JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id: request.id,
+                    result: Some(json!({
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": {
+                                "listChanged": true
                             }
-                            Err(e) => JsonRpcResponse {
-                                jsonrpc: "2.0".to_string(),
-                                id: request.id,
-                                result: None,
-                                error: Some(JsonRpcError {
-                                    code: -32602,
-                                    message: format!("Invalid session configuration: {}", e),
-                                }),
-                            },
+                        },
+                        "serverInfo": {
+                            "name": "toolman",
+                            "version": "1.0.0"
                         }
-                    } else {
-                        // Standard MCP initialization without session config
-                        JsonRpcResponse {
-                            jsonrpc: "2.0".to_string(),
-                            id: request.id,
-                            result: Some(json!({
-                                "protocolVersion": "2024-11-05",
-                                "capabilities": {
-                                    "tools": {
-                                        "listChanged": true
-                                    }
-                                },
-                                "serverInfo": {
-                                    "name": "mcp-proxy",
-                                    "version": "1.0.0"
-                                }
-                            })),
-                            error: None,
-                        }
-                    }
-                } else {
-                    // Standard MCP initialization without parameters
-                    JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: Some(json!({
-                            "protocolVersion": "2024-11-05",
-                            "capabilities": {
-                                "tools": {
-                                    "listChanged": true
-                                }
-                            },
-                            "serverInfo": {
-                                "name": "mcp-proxy",
-                                "version": "1.0.0"
-                            }
-                        })),
-                        error: None,
-                    }
+                    })),
+                    error: None,
                 }
             }
             "tools/list" => {
@@ -1555,33 +1445,9 @@ impl BridgeState {
                     "🔍 DEBUG: tools/list handler called - returning ALL tools without filtering"
                 );
 
-                let mut all_tools = vec![json!({
-                    "name": "suggest_tools_for_tasks",
-                    "description": "🤖 Analyze TaskMaster tasks and suggest appropriate MCP tools based on task descriptions and requirements",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "tasks": {
-                                "type": "array",
-                                "description": "Array of tasks from TaskMaster to analyze",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "id": { "type": "string" },
-                                        "title": { "type": "string" },
-                                        "description": { "type": "string" },
-                                        "details": { "type": "string" },
-                                        "subtasks": { "type": "array" }
-                                    }
-                                }
-                            }
-                        },
-                        "required": ["tasks"]
-                    }
-                })];
-
                 // Get ALL available tools without any filtering
                 let available_tools = self.available_tools.read().await;
+                let mut all_tools = Vec::new();
 
                 println!(
                     "🔍 Returning {} tools from all servers",
@@ -1608,158 +1474,97 @@ impl BridgeState {
             "tools/call" => {
                 if let Some(params) = request.params {
                     if let Some(tool_name) = params.get("name").and_then(|v| v.as_str()) {
-                        let result = match tool_name {
-                            "suggest_tools_for_tasks" => {
-                                if let Some(args) = params.get("arguments") {
-                                    let tasks = args.get("tasks").ok_or_else(|| {
-                                        anyhow::anyhow!("Missing required parameter: tasks")
-                                    });
+                        let result = {
+                            // Parse prefixed tool name and forward to server
+                            let config_manager = self.system_config_manager.read().await;
+                            let available_servers: Vec<String> =
+                                config_manager.get_servers().keys().cloned().collect();
+                            drop(config_manager);
 
-                                    match tasks {
-                                        Ok(tasks) => {
-                                            // Create tool suggester
-                                            let suggester = ToolSuggester::new();
+                            match parse_tool_name_with_servers(tool_name, &available_servers) {
+                                Ok(parsed_tool) => {
+                                    // Get arguments for the tool call
+                                    let mut arguments =
+                                        params.get("arguments").cloned().unwrap_or(json!({}));
 
-                                            // Analyze tasks
-                                            match suggester.analyze_tasks(tasks) {
-                                                Ok(analyses) => {
-                                                    // Return analysis results
-                                                    json!({
-                                                        "content": [{
-                                                            "type": "text",
-                                                            "text": format!(
-                                                                "📊 Task Analysis Complete!\n\n{}\n\n{}",
-                                                                format!("Analyzed {} tasks with {} total tool suggestions",
-                                                                    analyses.len(),
-                                                                    analyses.iter().map(|a| a.suggested_tools.len()).sum::<usize>()
-                                                                ),
-                                                                format!("📋 Detailed Analysis:\n{}",
-                                                                    serde_json::to_string_pretty(&analyses).unwrap_or_else(|_| "Error formatting analysis".to_string())
-                                                                )
-                                                            )
-                                                        }]
-                                                    })
+                                    // ✨ AUTO-INJECT parameters based on working directory
+                                    if let Some(working_dir) =
+                                        self.current_working_dir.read().await.as_ref()
+                                    {
+                                        if let Some(args_obj) = arguments.as_object_mut() {
+                                            // 🎯 Universal projectRoot injection (for TaskMaster, etc.)
+                                            args_obj.insert(
+                                                "projectRoot".to_string(),
+                                                json!(working_dir.to_string_lossy()),
+                                            );
+                                            println!(
+                                                "🔧 Auto-injected projectRoot: {}",
+                                                working_dir.display()
+                                            );
+
+                                            // 🎯 Server-specific parameter injection
+                                            // Note: Memory server uses environment variables, not parameters
+                                            // Other servers may need specific parameter injection here
+                                            match parsed_tool.server_name.as_str() {
+                                                _ => {
+                                                    // No additional parameter injection needed yet
+                                                    // Future servers that need working directory as parameters can be added here
                                                 }
-                                                Err(e) => {
-                                                    json!({
-                                                        "content": [{
-                                                            "type": "text",
-                                                            "text": format!("❌ Error analyzing tasks: {}", e)
-                                                        }]
-                                                    })
-                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Get user working directory for context-aware server startup
+                                    let user_working_dir = {
+                                        let wd = self.current_working_dir.read().await;
+                                        wd.clone()
+                                    };
+
+                                    // Forward to the appropriate server with user context
+                                    match self
+                                        .connection_pool
+                                        .forward_tool_call_with_context(
+                                            &parsed_tool.server_name,
+                                            &parsed_tool.tool_name,
+                                            arguments,
+                                            user_working_dir.as_deref(),
+                                        )
+                                        .await
+                                    {
+                                        Ok(response) => {
+                                            // Extract result from response or return the response directly
+                                            if let Some(result) = response.get("result") {
+                                                result.clone()
+                                            } else {
+                                                response
                                             }
                                         }
                                         Err(e) => {
                                             json!({
                                                 "content": [{
                                                     "type": "text",
-                                                    "text": format!("❌ {}", e)
+                                                    "text": format!("❌ Error calling tool '{}'\n\n🔍 **Debug Info:**\n- Original tool name: '{}'\n- Parsed as: server='{}', tool='{}'\n- Available servers: [{}]\n- Error: {}\n\n💡 Expected format: {{server_name}}_{{tool_name}}",
+                                                                   tool_name,
+                                                                   tool_name,
+                                                                   parsed_tool.server_name,
+                                                                   parsed_tool.tool_name,
+                                                                   available_servers.join(", "),
+                                                                   e)
                                                 }]
                                             })
                                         }
                                     }
-                                } else {
+                                }
+                                Err(e) => {
                                     json!({
                                         "content": [{
                                             "type": "text",
-                                            "text": "❌ No arguments provided"
+                                            "text": format!("❌ Invalid tool name format\n\n🔍 **Debug Info:**\n- Attempted tool name: '{}'\n- Parse error: {}\n- Available servers: [{}]\n- Expected format: {{server_name}}_{{tool_name}}\n\n📝 **Examples:**\n- memory_read_graph\n- git_git_status\n- task_master_ai_get_tasks",
+                                                           tool_name,
+                                                           e,
+                                                           available_servers.join(", "))
                                         }]
                                     })
-                                }
-                            }
-                            _ => {
-                                // Parse prefixed tool name and forward to server
-                                let config_manager = self.system_config_manager.read().await;
-                                let available_servers: Vec<String> =
-                                    config_manager.get_servers().keys().cloned().collect();
-                                drop(config_manager);
-
-                                match parse_tool_name_with_servers(tool_name, &available_servers) {
-                                    Ok(parsed_tool) => {
-                                        // Get arguments for the tool call
-                                        let mut arguments =
-                                            params.get("arguments").cloned().unwrap_or(json!({}));
-
-                                        // ✨ AUTO-INJECT parameters based on working directory
-                                        if let Some(working_dir) =
-                                            self.current_working_dir.read().await.as_ref()
-                                        {
-                                            if let Some(args_obj) = arguments.as_object_mut() {
-                                                // 🎯 Universal projectRoot injection (for TaskMaster, etc.)
-                                                args_obj.insert(
-                                                    "projectRoot".to_string(),
-                                                    json!(working_dir.to_string_lossy()),
-                                                );
-                                                println!(
-                                                    "🔧 Auto-injected projectRoot: {}",
-                                                    working_dir.display()
-                                                );
-
-                                                // 🎯 Server-specific parameter injection
-                                                // Note: Memory server uses environment variables, not parameters
-                                                // Other servers may need specific parameter injection here
-                                                match parsed_tool.server_name.as_str() {
-                                                    _ => {
-                                                        // No additional parameter injection needed yet
-                                                        // Future servers that need working directory as parameters can be added here
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Get user working directory for context-aware server startup
-                                        let user_working_dir = {
-                                            let wd = self.current_working_dir.read().await;
-                                            wd.clone()
-                                        };
-
-                                        // Forward to the appropriate server with user context
-                                        match self
-                                            .connection_pool
-                                            .forward_tool_call_with_context(
-                                                &parsed_tool.server_name,
-                                                &parsed_tool.tool_name,
-                                                arguments,
-                                                user_working_dir.as_deref(),
-                                            )
-                                            .await
-                                        {
-                                            Ok(response) => {
-                                                // Extract result from response or return the response directly
-                                                if let Some(result) = response.get("result") {
-                                                    result.clone()
-                                                } else {
-                                                    response
-                                                }
-                                            }
-                                            Err(e) => {
-                                                json!({
-                                                    "content": [{
-                                                        "type": "text",
-                                                        "text": format!("❌ Error calling tool '{}'\n\n🔍 **Debug Info:**\n- Original tool name: '{}'\n- Parsed as: server='{}', tool='{}'\n- Available servers: [{}]\n- Error: {}\n\n💡 Expected format: {{server_name}}_{{tool_name}}",
-                                                                       tool_name,
-                                                                       tool_name,
-                                                                       parsed_tool.server_name,
-                                                                       parsed_tool.tool_name,
-                                                                       available_servers.join(", "),
-                                                                       e)
-                                                    }]
-                                                })
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        json!({
-                                            "content": [{
-                                                "type": "text",
-                                                "text": format!("❌ Invalid tool name format\n\n🔍 **Debug Info:**\n- Attempted tool name: '{}'\n- Parse error: {}\n- Available servers: [{}]\n- Expected format: {{server_name}}_{{tool_name}}\n\n📝 **Examples:**\n- memory_read_graph\n- git_git_status\n- task_master_ai_get_tasks",
-                                                               tool_name,
-                                                               e,
-                                                               available_servers.join(", "))
-                                            }]
-                                        })
-                                    }
                                 }
                             }
                         };
@@ -1804,325 +1609,13 @@ impl BridgeState {
             },
         }
     }
-
-    /// Handle session-based requests with execution context routing
-    async fn handle_session_request(
-        &self,
-        request: JsonRpcRequest,
-        session_id: &str,
-    ) -> JsonRpcResponse {
-        println!(
-            "🔄 Processing session-based request: {} for session {}",
-            request.method, session_id
-        );
-
-        // Get session context
-        let session = match self.session_store.get_session(session_id) {
-            Ok(Some(session)) => session,
-            Ok(None) => {
-                return JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: request.id,
-                    result: None,
-                    error: Some(JsonRpcError {
-                        code: -32602,
-                        message: format!("Session not found: {}", session_id),
-                    }),
-                };
-            }
-            Err(e) => {
-                return JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: request.id,
-                    result: None,
-                    error: Some(JsonRpcError {
-                        code: -32603,
-                        message: format!("Session error: {}", e),
-                    }),
-                };
-            }
-        };
-
-        // Update session access time
-        if let Err(e) = self.session_store.update_session_access(session_id) {
-            eprintln!("⚠️ Failed to update session access time: {}", e);
-        }
-
-        match request.method.as_str() {
-            "tools/call" => {
-                if let Some(params) = request.params {
-                    if let Some(tool_name) = params.get("name").and_then(|v| v.as_str()) {
-                        // Look up tool source in session configuration
-                        if let Some(tool_source) = session.get_tool_source(tool_name) {
-                            let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
-
-                            println!(
-                                "🔧 Routing tool '{}' via source: {}",
-                                tool_name,
-                                tool_source.to_string()
-                            );
-
-                            let result = match tool_source {
-                                toolman::session::ToolSource::Local(server_name) => {
-                                    // Route to local server
-                                    self.route_to_local_server(
-                                        server_name,
-                                        tool_name,
-                                        arguments,
-                                        &session,
-                                    )
-                                    .await
-                                }
-                                toolman::session::ToolSource::Global(server_name) => {
-                                    // Route to global server
-                                    self.route_to_global_server(server_name, tool_name, arguments)
-                                        .await
-                                }
-                            };
-
-                            JsonRpcResponse {
-                                jsonrpc: "2.0".to_string(),
-                                id: request.id,
-                                result: Some(result),
-                                error: None,
-                            }
-                        } else {
-                            JsonRpcResponse {
-                                jsonrpc: "2.0".to_string(),
-                                id: request.id,
-                                result: None,
-                                error: Some(JsonRpcError {
-                                    code: -32602,
-                                    message: format!(
-                                        "Tool '{}' not available in session configuration",
-                                        tool_name
-                                    ),
-                                }),
-                            }
-                        }
-                    } else {
-                        JsonRpcResponse {
-                            jsonrpc: "2.0".to_string(),
-                            id: request.id,
-                            result: None,
-                            error: Some(JsonRpcError {
-                                code: -32602,
-                                message: "Missing tool name".to_string(),
-                            }),
-                        }
-                    }
-                } else {
-                    JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id: request.id,
-                        result: None,
-                        error: Some(JsonRpcError {
-                            code: -32602,
-                            message: "Invalid params".to_string(),
-                        }),
-                    }
-                }
-            }
-            "tools/list" => {
-                // Return tools aggregated from both local and global servers
-                let mut available_tools = Vec::new();
-
-                // Add tools from spawned local servers (actual discovered tools)
-                for (server_name, server_info) in &session.spawned_servers {
-                    for tool_name in &server_info.tools {
-                        // Only include if this tool was requested in the session
-                        if session
-                            .requested_tools
-                            .iter()
-                            .any(|req| req.name == *tool_name)
-                        {
-                            available_tools.push(json!({
-                                "name": tool_name,
-                                "description": format!("Local tool from {} server (PID: {})",
-                                    server_name,
-                                    server_info.process_info.as_ref().map(|p| p.pid).unwrap_or(0)
-                                ),
-                                "inputSchema": {},
-                                "source": format!("local:{}", server_name),
-                                "status": match server_info.status {
-                                    toolman::session::ServerStatus::Running => "ready",
-                                    toolman::session::ServerStatus::Starting => "starting",
-                                    toolman::session::ServerStatus::Failed(_) => "failed",
-                                    toolman::session::ServerStatus::Stopped => "stopped",
-                                }
-                            }));
-                        }
-                    }
-                }
-
-                // Add global tools (from session requests)
-                for tool_request in &session.requested_tools {
-                    if let toolman::session::ToolSource::Global(server_name) = &tool_request.source
-                    {
-                        available_tools.push(json!({
-                            "name": tool_request.name,
-                            "description": format!("Global tool from {} server", server_name),
-                            "inputSchema": {},
-                            "source": format!("global:{}", server_name),
-                            "status": "ready"
-                        }));
-                    }
-                }
-
-                JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id: request.id,
-                    result: Some(json!({ "tools": available_tools })),
-                    error: None,
-                }
-            }
-            _ => {
-                // For other methods, fall back to standard handling
-                self.handle_jsonrpc_request(request, None).await
-            }
-        }
-    }
-
-    /// Route tool call to local server
-    async fn route_to_local_server(
-        &self,
-        server_name: &str,
-        tool_name: &str,
-        arguments: Value,
-        session: &toolman::session::SessionContext,
-    ) -> Value {
-        println!(
-            "📡 Routing to local server '{}' for tool '{}'",
-            server_name, tool_name
-        );
-
-        // Check if local server is spawned and ready
-        if let Some(server_info) = session.spawned_servers.get(server_name) {
-            match server_info.status {
-                toolman::session::ServerStatus::Running => {
-                    // Try to communicate with the local server using the existing connection pool
-                    // This leverages the existing MCP communication logic but with session-specific working directory
-                    match self
-                        .connection_pool
-                        .forward_tool_call_with_context(
-                            server_name,
-                            tool_name,
-                            arguments.clone(),
-                            server_info.working_directory.as_deref(),
-                        )
-                        .await
-                    {
-                        Ok(response) => {
-                            // Extract result from response
-                            if let Some(result) = response.get("result") {
-                                result.clone()
-                            } else {
-                                response
-                            }
-                        }
-                        Err(e) => {
-                            // If the existing connection pool doesn't work, it might be because
-                            // we need to establish communication with our spawned process
-                            println!(
-                                "⚠️ Connection pool failed for local server '{}': {}",
-                                server_name, e
-                            );
-                            json!({
-                                "content": [{
-                                    "type": "text",
-                                    "text": format!("✅ Local server '{}' (PID: {}) received tool '{}' with args: {}\n\n⚠️ Note: Direct process communication not yet implemented, using connection pool fallback.",
-                                        server_name,
-                                        server_info.process_info.as_ref().map(|p| p.pid).unwrap_or(0),
-                                        tool_name,
-                                        arguments)
-                                }]
-                            })
-                        }
-                    }
-                }
-                toolman::session::ServerStatus::Starting => {
-                    json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("⏳ Local server '{}' is still starting, please try again", server_name)
-                        }]
-                    })
-                }
-                toolman::session::ServerStatus::Failed(ref error) => {
-                    json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("❌ Local server '{}' failed: {}", server_name, error)
-                        }]
-                    })
-                }
-                toolman::session::ServerStatus::Stopped => {
-                    json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("⏸️ Local server '{}' is stopped", server_name)
-                        }]
-                    })
-                }
-            }
-        } else {
-            json!({
-                "content": [{
-                    "type": "text",
-                    "text": format!("❌ Local server '{}' not found in session", server_name)
-                }]
-            })
-        }
-    }
-
-    /// Route tool call to global server
-    async fn route_to_global_server(
-        &self,
-        server_name: &str,
-        tool_name: &str,
-        arguments: Value,
-    ) -> Value {
-        println!(
-            "🌐 Routing to global server '{}' for tool '{}'",
-            server_name, tool_name
-        );
-
-        // Use existing connection pool to forward to global server
-        match self
-            .connection_pool
-            .forward_tool_call_with_context(
-                server_name,
-                tool_name,
-                arguments,
-                None, // No working directory for global servers
-            )
-            .await
-        {
-            Ok(response) => {
-                // Extract result from response
-                if let Some(result) = response.get("result") {
-                    result.clone()
-                } else {
-                    response
-                }
-            }
-            Err(e) => {
-                json!({
-                    "content": [{
-                        "type": "text",
-                        "text": format!("❌ Error calling global server '{}': {}", server_name, e)
-                    }]
-                })
-            }
-        }
-    }
 }
 
 // Liveness probe - just checks if HTTP server is alive
 async fn health_check() -> Json<Value> {
     Json(json!({
         "status": "ok",
-        "service": "mcp-proxy",
+        "service": "toolman",
         "timestamp": Utc::now().to_rfc3339()
     }))
 }
@@ -2141,268 +1634,23 @@ async fn readiness_check(State(state): State<BridgeState>) -> Result<Json<Value>
     // TODO: In the future, we could ping each server to check actual availability
     Ok(Json(json!({
         "status": "ready",
-        "service": "mcp-proxy",
+        "service": "toolman",
         "servers_configured": servers.len(),
         "timestamp": Utc::now().to_rfc3339()
     })))
 }
 
 // Session initialization endpoint
-async fn session_init(
-    State(state): State<BridgeState>,
-    Json(request): Json<SessionInitRequest>,
-) -> Result<Json<SessionInitResponse>, (StatusCode, Json<Value>)> {
-    println!(
-        "🔄 Creating new session for client: {}",
-        request.client_info.name
-    );
-
-    match state.session_store.create_session(request).await {
-        Ok(response) => {
-            println!("✅ Session created: {}", response.session_id);
-            Ok(Json(response))
-        }
-        Err(e) => {
-            eprintln!("❌ Failed to create session: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Failed to create session",
-                    "details": e
-                })),
-            ))
-        }
-    }
-}
-
-// Session destruction endpoint
-async fn session_destroy(
-    State(state): State<BridgeState>,
-    axum::extract::Path(session_id): axum::extract::Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    println!("🗑️  Destroying session: {}", session_id);
-
-    match state.session_store.remove_session(&session_id).await {
-        Ok(removed) => {
-            if removed {
-                println!("✅ Session destroyed: {}", session_id);
-                Ok(Json(json!({
-                    "status": "success",
-                    "message": "Session destroyed successfully"
-                })))
-            } else {
-                Err((
-                    StatusCode::NOT_FOUND,
-                    Json(json!({
-                        "error": "Session not found",
-                        "session_id": session_id
-                    })),
-                ))
-            }
-        }
-        Err(e) => {
-            eprintln!("❌ Failed to destroy session {}: {}", session_id, e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": "Failed to destroy session",
-                    "details": e
-                })),
-            ))
-        }
-    }
-}
-
-// Session tools list endpoint
-async fn session_tools_list(
-    State(state): State<BridgeState>,
-    axum::extract::Path(session_id): axum::extract::Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    println!("🔍 Getting tools list for session: {}", session_id);
-
-    // Update session access time
-    if let Err(e) = state.session_store.update_session_access(&session_id) {
-        println!("⚠️ Failed to update session access time: {}", e);
-    }
-
-    // Get session and build available tools
-    match state.session_store.get_session(&session_id) {
-        Ok(Some(_session)) => {
-            // Build available tools for this session
-            let available_tools = state
-                .session_store
-                .get_available_tools_for_session(&session_id)
-                .await
-                .unwrap_or_else(|_| Vec::new());
-
-            println!(
-                "✅ Found session: {} with {} available tools",
-                session_id,
-                available_tools.len()
-            );
-
-            // Build tools response in MCP format
-            let tools: Vec<Value> = available_tools
-                .iter()
-                .map(|tool| {
-                    json!({
-                        "name": tool.name,
-                        "description": format!("Tool from {}", tool.source),
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    })
-                })
-                .collect();
-
-            Ok(Json(json!({
-                "tools": tools
-            })))
-        }
-        Ok(None) => {
-            println!("⚠️ Session not found: {}", session_id);
-            Err((
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Session not found"})),
-            ))
-        }
-        Err(e) => {
-            println!("❌ Failed to get session {}: {}", session_id, e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))))
-        }
-    }
-}
-
-// Session tools call endpoint
-async fn session_tools_call(
-    State(state): State<BridgeState>,
-    axum::extract::Path(session_id): axum::extract::Path<String>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    println!("🔧 Executing tool call for session: {}", session_id);
-
-    // Update session access time
-    if let Err(e) = state.session_store.update_session_access(&session_id) {
-        println!("⚠️ Failed to update session access time: {}", e);
-    }
-
-    // Parse the tool call request
-    let tool_name = body.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
-        println!("❌ Missing tool name in request");
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Missing tool name"})),
-        )
-    })?;
-
-    let default_args = json!({});
-    let tool_arguments = body.get("arguments").unwrap_or(&default_args);
-
-    println!("🔧 Tool call: {} with args: {}", tool_name, tool_arguments);
-
-    // Get session to determine tool source
-    let session = match state.session_store.get_session(&session_id) {
-        Ok(Some(session)) => session,
-        Ok(None) => {
-            println!("⚠️ Session not found: {}", session_id);
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Session not found"})),
-            ));
-        }
-        Err(e) => {
-            println!("❌ Failed to get session {}: {}", session_id, e);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))));
-        }
-    };
-
-    // Find the tool in the session's requested tools to determine source
-    let tool_source = session
-        .requested_tools
-        .iter()
-        .find(|req| req.name == tool_name)
-        .map(|req| &req.source);
-
-    match tool_source {
-        Some(ToolSource::Local(server_name)) => {
-            println!("🏠 Routing tool call to local server: {}", server_name);
-            match state
-                .session_store
-                .execute_tool_on_local_server(
-                    &session_id,
-                    server_name,
-                    tool_name,
-                    tool_arguments.clone(),
-                )
-                .await
-            {
-                Ok(result) => {
-                    println!("✅ Local tool execution successful");
-                    Ok(Json(result))
-                }
-                Err(e) => {
-                    println!("❌ Local tool execution failed: {}", e);
-                    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))))
-                }
-            }
-        }
-        Some(ToolSource::Global(server_name)) => {
-            println!("🌍 Routing tool call to global server: {}", server_name);
-            // For now, return not implemented for global servers
-            Err((
-                StatusCode::NOT_IMPLEMENTED,
-                Json(json!({"error": "Global server tool execution not yet implemented"})),
-            ))
-        }
-        None => {
-            println!(
-                "❌ Tool {} not found in session's requested tools",
-                tool_name
-            );
-            Err((
-                StatusCode::NOT_FOUND,
-                Json(
-                    json!({"error": format!("Tool '{}' not available in this session", tool_name)}),
-                ),
-            ))
-        }
-    }
-}
-
 async fn mcp_endpoint(
     State(state): State<BridgeState>,
     headers: axum::http::HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<JsonRpcError>)> {
-    // Extract session ID from headers or request body
-    let session_id = headers
-        .get("x-session-id")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .or_else(|| {
-            // Try to extract from request body if it's a JSON object
-            body.as_object()
-                .and_then(|obj| obj.get("sessionId"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        });
-
     if let Ok(request) = serde_json::from_value::<JsonRpcRequest>(body) {
-        eprintln!("📨 DEBUG: Request method: {}", request.method);
-
-        // If we have a session ID, use session-based routing
-        if let Some(session_id) = session_id {
-            eprintln!("🔄 Using session-based routing for session: {}", session_id);
-            let response = state.handle_session_request(request, &session_id).await;
-            Ok(Json(response))
-        } else {
-            // Fall back to legacy routing without session
-            eprintln!("📨 Using legacy routing (no session ID)");
-            let response = state.handle_jsonrpc_request(request, Some(&headers)).await;
-            Ok(Json(response))
-        }
+        eprintln!("📨 Processing request: {}", request.method);
+        // Simple tool aggregation - no session complexity
+        let response = state.handle_jsonrpc_request(request, Some(&headers)).await;
+        Ok(Json(response))
     } else {
         Err((
             StatusCode::BAD_REQUEST,
@@ -2523,13 +1771,6 @@ async fn main() -> Result<()> {
         .route("/mcp", post(mcp_endpoint))
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
-        .route("/session/init", post(session_init))
-        .route(
-            "/session/:session_id",
-            axum::routing::delete(session_destroy),
-        )
-        .route("/session/:session_id/tools/list", get(session_tools_list))
-        .route("/session/:session_id/tools/call", post(session_tools_call))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

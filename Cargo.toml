@@ -16,11 +16,11 @@ name = "toolman"
 path = "src/lib.rs"
 
 [[bin]]
-name = "toolman"
-path = "src/bin/stdio_wrapper.rs"
+name = "toolman-client"
+path = "src/bin/client.rs"
 
 [[bin]]
-name = "toolman-http"
+name = "toolman-server"
 path = "src/bin/http_server.rs"
 
 [dependencies]
@@ -36,20 +36,21 @@ thiserror = "2.0.12"
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12.22", features = ["json"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 regex = "1.10"
 # rmcp = { version = "0.2.1", features = ["server", "transport-streamable-http-server", "transport-child-process", "transport-worker"] }
 
 # HTTP server dependencies
-axum = { version = "0.7", features = ["json"] }
+axum = { version = "0.8.4", features = ["json"] }
 tower-http = { version = "0.6", features = ["cors"] }
+ctrlc = "3.4.7"
 
 [dev-dependencies]
 tempfile = "3.8"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12.22", features = ["json"] }
 tokio-test = "0.4"
-env_logger = "0.10"
+env_logger = "0.11.8"
 log = "0.4"
 
 # Integration test configuration

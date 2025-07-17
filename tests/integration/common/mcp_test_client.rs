@@ -167,7 +167,7 @@ impl McpTestClient {
                 "sampling": {}
             },
             "clientInfo": {
-                "name": "mcp-proxy-test",
+                "name": "toolman-test",
                 "version": "1.0.0"
             }
         });

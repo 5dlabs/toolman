@@ -10,6 +10,34 @@ fn default_transport() -> String {
     "stdio".to_string()
 }
 
+/// New simplified client-side configuration structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientConfig {
+    /// Tools to request from the remote proxy server
+    #[serde(rename = "remoteTools")]
+    pub remote_tools: Vec<String>,
+    /// Local servers to spawn in client context
+    #[serde(rename = "localServers")]
+    pub local_servers: HashMap<String, LocalServerConfig>,
+}
+
+/// Configuration for a local MCP server to be spawned by the client
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalServerConfig {
+    /// Command to execute (e.g., "npx")
+    pub command: String,
+    /// Command arguments
+    pub args: Vec<String>,
+    /// Tools to expose from this local server
+    pub tools: Vec<String>,
+    /// Working directory for the server process (optional, defaults to project directory)
+    #[serde(rename = "workingDirectory", default)]
+    pub working_directory: Option<String>,
+    /// Environment variables for the server process
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
 /// Tool configuration within a server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolConfig {

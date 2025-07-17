@@ -63,7 +63,7 @@ impl HttpSseTestClient {
                 "sampling": {}
             },
             "clientInfo": {
-                "name": "mcp-proxy-http-test",
+                "name": "toolman-http-test",
                 "version": "1.0.0"
             }
         });

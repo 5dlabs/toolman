@@ -308,15 +308,15 @@ jobs:
       - name: Build binaries
         run: |
           echo "🏗️ Building for ${{ matrix.target }}..."
-          cargo build --release --target ${{ matrix.target }} --bin toolman
-          cargo build --release --target ${{ matrix.target }} --bin toolman-http
+          cargo build --release --target ${{ matrix.target }} --bin toolman-client
+          cargo build --release --target ${{ matrix.target }} --bin toolman-server
 
       - name: Create binary archive (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/toolman dist/
-          cp target/${{ matrix.target }}/release/toolman-http dist/
+          cp target/${{ matrix.target }}/release/toolman-client dist/
+          cp target/${{ matrix.target }}/release/toolman-server dist/
           cd dist
           tar czf ../toolman-${{ matrix.target }}.tar.gz *
           cd ..
@@ -326,8 +326,8 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item "target\${{ matrix.target }}\release\toolman.exe" "dist\"
-          Copy-Item "target\${{ matrix.target }}\release\toolman-http.exe" "dist\"
+          Copy-Item "target\${{ matrix.target }}\release\toolman-client.exe" "dist\"
+          Copy-Item "target\${{ matrix.target }}\release\toolman-server.exe" "dist\"
           Set-Location dist
           tar czf ..\toolman-${{ matrix.target }}.tar.gz *
           Set-Location ..
@@ -360,9 +360,9 @@ jobs:
         run: |
           cd artifacts
           tar -xzf toolman-x86_64-unknown-linux-gnu.tar.gz
-          mv toolman ../toolman-linux
-          mv toolman-http ../toolman-http-linux
-          chmod +x ../toolman-linux ../toolman-http-linux
+          mv toolman-client ../toolman-client-linux
+          mv toolman-server ../toolman-server-linux
+          chmod +x ../toolman-client-linux ../toolman-server-linux
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

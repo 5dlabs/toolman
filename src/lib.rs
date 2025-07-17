@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-// Re-export the stdio wrapper module
-pub mod stdio_wrapper;
+// Re-export the MCP client module
+pub mod client;
 
 // Comprehensive error handling system
 pub mod errors;
@@ -18,21 +18,10 @@ pub mod context;
 // Configuration management
 pub mod config;
 
-// Session management
-pub mod session;
-pub mod session_store;
-
 // Re-export key types for convenience
-pub use config::{
-    ClientInfo, ExecutionContext, ServerConfig, SessionConfig, SessionSettings, SystemConfigManager,
-};
+pub use config::{ClientInfo, ExecutionContext, ServerConfig, SystemConfigManager};
 pub use context::{ContextConfig, ContextManager};
-pub use session::{SessionContext, SessionInitRequest, SessionInitResponse, ToolSource};
-pub use session_store::SessionStore;
-pub use stdio_wrapper::StdioWrapper;
-
-// Tool suggester module
-pub mod tool_suggester;
+pub use client::McpClient;
 
 /// Helper function to resolve working directory patterns
 pub fn resolve_working_directory(working_dir: &str, project_dir: &std::path::Path) -> PathBuf {

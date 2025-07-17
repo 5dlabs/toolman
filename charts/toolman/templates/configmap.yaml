@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "toolman.configMapName" . }}
+  labels:
+    {{- include "toolman.labels" . | nindent 4 }}
+data:
+  servers-config.json: |
+    {{- if .Values.config.servers }}
+    {
+      "servers": {
+        {{- $first := true }}
+        {{- range $serverName, $serverConfig := .Values.config.servers }}
+        {{- if not $first }},{{ end }}
+        {{- $first = false }}
+        "{{ $serverName }}": {
+          {{- if $serverConfig.name }}
+          "name": {{ $serverConfig.name | quote }},
+          {{- end }}
+          {{- if $serverConfig.description }}
+          "description": {{ $serverConfig.description | quote }},
+          {{- end }}
+          "transport": {{ $serverConfig.transport | default "stdio" | quote }},
+          "command": {{ $serverConfig.command | quote }},
+          "args": {{ $serverConfig.args | toJson }},
+          "enabled": {{ $serverConfig.enabled | default false }},
+          {{- if hasKey $serverConfig "alwaysActive" }}
+          "alwaysActive": {{ $serverConfig.alwaysActive }},
+          {{- end }}
+          {{- if hasKey $serverConfig "autoStart" }}
+          "autoStart": {{ $serverConfig.autoStart }},
+          {{- end }}
+          {{- if $serverConfig.workingDirectory }}
+          "workingDirectory": {{ $serverConfig.workingDirectory | quote }},
+          {{- end }}
+          {{- if $serverConfig.url }}
+          "url": {{ $serverConfig.url | quote }},
+          {{- end }}
+          "env": {},
+          "tools": {},
+          "executionContext": {{ $serverConfig.executionContext | default "remote" | quote }}
+        }
+        {{- end }}
+      }
+    }
+    {{- else }}
+    {{- .Files.Get "config/servers-config.json" | nindent 4 }}
+    {{- end }}
