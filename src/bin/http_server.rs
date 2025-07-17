@@ -926,7 +926,7 @@ impl BridgeState {
                     url,
                     url.ends_with("/sse")
                 );
-                let (message_url, _session_id) = if url.ends_with("/sse") {
+                let (message_url, session_id) = if url.ends_with("/sse") {
                     println!(
                         "🔄 [{}] Detected SSE endpoint, starting SSE handshake",
                         server_name
@@ -1011,62 +1011,61 @@ impl BridgeState {
 
                 println!("🎯 [{}] Final message_url: {}", server_name, message_url);
 
-                // For SSE endpoints, skip initialize due to short session timeouts
-                // Go directly to tools/list
-                let tools_request = if url.ends_with("/sse") {
-                    println!("🔄 [{}] SSE endpoint detected - skipping initialize due to session timeout issues", server_name);
-                    json!({
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/list",
-                        "params": {}
-                    })
-                } else {
-                    println!(
-                        "🔄 [{}] HTTP endpoint - sending initialize first",
-                        server_name
-                    );
-                    // Initialize the server for non-SSE endpoints
-                    let init_request = json!({
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "initialize",
-                        "params": {
-                            "protocolVersion": "2024-11-05",
-                            "capabilities": {},
-                            "clientInfo": {
-                                "name": "toolman",
-                                "version": "1.0.0"
-                            }
+                // Handle SSE vs HTTP endpoints differently
+                if url.ends_with("/sse") {
+                    println!("🔄 [{}] SSE endpoint detected - using proper rmcp SSE transport", server_name);
+                    
+                    // For SSE endpoints, we need to handle the full MCP handshake
+                    // with responses coming through the SSE stream
+                    return discover_tools_via_rmcp_sse(&client, server_name, url, &session_id).await;
+                }
+                
+                // Non-SSE HTTP endpoint handling
+                println!(
+                    "🔄 [{}] HTTP endpoint - sending initialize first",
+                    server_name
+                );
+                
+                // Initialize the server for non-SSE endpoints
+                let init_request = json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {
+                            "name": "toolman",
+                            "version": "1.0.0"
                         }
-                    });
+                    }
+                });
 
-                    println!(
-                        "📤 [{}] Sending initialize request to: {}",
-                        server_name, message_url
-                    );
-                    let init_response = client
-                        .post(&message_url)
-                        .header("Accept", "application/json, text/event-stream")
-                        .json(&init_request)
-                        .send()
-                        .await
-                        .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
+                println!(
+                    "📤 [{}] Sending initialize request to: {}",
+                    server_name, message_url
+                );
+                let init_response = client
+                    .post(&message_url)
+                    .header("Accept", "application/json, text/event-stream")
+                    .json(&init_request)
+                    .send()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
 
-                    println!(
-                        "📥 [{}] Initialize response status: {}",
-                        server_name,
-                        init_response.status()
-                    );
+                println!(
+                    "📥 [{}] Initialize response status: {}",
+                    server_name,
+                    init_response.status()
+                );
 
-                    // Get tools list
-                    json!({
-                        "jsonrpc": "2.0",
-                        "id": 2,
-                        "method": "tools/list",
-                        "params": {}
-                    })
-                };
+                // Get tools list
+                let tools_request = json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": {}
+                });
 
                 println!(
                     "📤 [{}] Sending tools/list request to: {}",
@@ -1741,7 +1740,205 @@ impl BridgeState {
         );
         Ok(tools)
     }
+}
 
+/// Discover tools from rmcp SSE server with proper bidirectional transport
+async fn discover_tools_via_rmcp_sse(
+    client: &reqwest::Client,
+    server_name: &str, 
+    sse_url: &str,
+    _existing_session_id: &str, // Not used, we'll get a fresh one
+) -> anyhow::Result<Vec<Tool>> {
+    use futures::StreamExt;
+    use tokio::time::{timeout, Duration};
+    
+    println!("🚀 [{}] Starting rmcp SSE tool discovery", server_name);
+    
+    // Step 1: Open SSE connection and get session ID
+    let sse_response = client
+        .get(sse_url)
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to connect to SSE endpoint: {}", e))?;
+    
+    let mut body = sse_response.bytes_stream();
+    
+    // Wait for session data from SSE stream (up to 10 seconds)
+    let session_id = match timeout(Duration::from_secs(10), body.next()).await {
+        Ok(Some(Ok(chunk))) => {
+            let chunk_str = String::from_utf8_lossy(&chunk);
+            println!("🔗 [{}] SSE handshake data: {}", server_name, chunk_str.trim());
+            
+            // Parse session ID from "data: /message?sessionId=xxx"
+            if let Some(data_line) = chunk_str.lines().find(|line| line.starts_with("data: ")) {
+                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                    session_param.to_string()
+                } else {
+                    return Err(anyhow::anyhow!("No sessionId found in SSE data"));
+                }
+            } else {
+                return Err(anyhow::anyhow!("No data line found in SSE response"));
+            }
+        }
+        Ok(Some(Err(e))) => return Err(anyhow::anyhow!("SSE stream error: {}", e)),
+        Ok(None) => return Err(anyhow::anyhow!("SSE stream ended unexpectedly")),
+        Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
+    };
+    
+    println!("✅ [{}] Got rmcp SSE session ID: {}", server_name, session_id);
+    
+    // Step 2: Prepare message endpoint
+    let base_url = sse_url.trim_end_matches("/sse").trim_end_matches('/');
+    let message_url = format!("{}/message?sessionId={}", base_url, session_id);
+    
+    // Step 3: Start listening for responses in background task
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    
+    // Spawn SSE response listener
+    let tx_clone = tx.clone();
+    let server_name_clone = server_name.to_string();
+    tokio::spawn(async move {
+        while let Some(chunk_result) = body.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    // Look for "event: message" followed by "data: {...}"
+                    let lines: Vec<&str> = chunk_str.lines().collect();
+                    for i in 0..lines.len() {
+                        if lines[i] == "event: message" && i + 1 < lines.len() {
+                            if let Some(data_line) = lines.get(i + 1) {
+                                if let Some(json_str) = data_line.strip_prefix("data: ") {
+                                    if let Ok(response) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                        println!("📨 [{}] SSE response received", server_name_clone);
+                                        let _ = tx_clone.send(response);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ [{}] SSE stream error: {}", server_name_clone, e);
+                    break;
+                }
+            }
+        }
+    });
+    
+    // Step 4: Send MCP handshake sequence
+    
+    // 4a. Send initialize request
+    println!("📤 [{}] Sending initialize request", server_name);
+    let init_request = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "toolman",
+                "version": "1.0.0"
+            }
+        }
+    });
+    
+    client
+        .post(&message_url)
+        .header("Content-Type", "application/json")
+        .json(&init_request)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send initialize: {}", e))?;
+    
+    // Wait for initialize response
+    let _init_response = timeout(Duration::from_secs(10), rx.recv())
+        .await
+        .map_err(|_| anyhow::anyhow!("Timeout waiting for initialize response"))?
+        .ok_or_else(|| anyhow::anyhow!("Initialize response channel closed"))?;
+    
+    println!("✅ [{}] Initialize response received", server_name);
+    
+    // 4b. Send initialized notification
+    println!("📤 [{}] Sending initialized notification", server_name);
+    let initialized_notification = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    });
+    
+    client
+        .post(&message_url)
+        .header("Content-Type", "application/json")
+        .json(&initialized_notification)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send initialized: {}", e))?;
+    
+    // 4c. Send tools/list request
+    println!("📤 [{}] Sending tools/list request", server_name);
+    let tools_request = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+    });
+    
+    client
+        .post(&message_url)
+        .header("Content-Type", "application/json")
+        .json(&tools_request)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send tools/list: {}", e))?;
+    
+    // Wait for tools/list response
+    let tools_response = timeout(Duration::from_secs(10), rx.recv())
+        .await
+        .map_err(|_| anyhow::anyhow!("Timeout waiting for tools/list response"))?
+        .ok_or_else(|| anyhow::anyhow!("Tools/list response channel closed"))?;
+    
+    println!("✅ [{}] Tools/list response received", server_name);
+    
+    // Step 5: Parse tools from response
+    let tools: Vec<Tool> = if let Some(result) = tools_response.get("result") {
+        if let Some(tools_array) = result.get("tools") {
+            if let Ok(tools_vec) = serde_json::from_value::<Vec<serde_json::Value>>(tools_array.clone()) {
+                tools_vec
+                    .into_iter()
+                    .filter_map(|tool| {
+                        let name = tool.get("name")?.as_str()?.to_string();
+                        let description = tool
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let input_schema = tool.get("inputSchema").cloned().unwrap_or(json!({}));
+                        
+                        Some(Tool {
+                            name,
+                            description,
+                            input_schema,
+                            server_name: server_name.to_string(),
+                        })
+                    })
+                    .collect()
+            } else {
+                return Err(anyhow::anyhow!("Failed to parse tools array"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("No tools in response"));
+        }
+    } else {
+        return Err(anyhow::anyhow!("No result in tools response"));
+    };
+    
+    println!("✅ [{}] Discovered {} tools via rmcp SSE", server_name, tools.len());
+    Ok(tools)
+}
+
+impl BridgeState {
     async fn handle_jsonrpc_request(
         &self,
         request: JsonRpcRequest,
