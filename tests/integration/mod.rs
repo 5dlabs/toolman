@@ -2,8 +2,8 @@
 
 pub mod common;
 pub mod real_servers;
-pub mod toolman_server_tests;
 pub mod simple_forwarding_test;
+pub mod toolman_server_tests;
 
 // Re-export common utilities for tests
 pub use common::*;

@@ -827,13 +827,13 @@ impl BridgeState {
                                     tool.get("description").and_then(|d| d.as_str()),
                                 ) {
                                     Some(Tool {
-                                    name: name.to_string(),
-                                    description: description.to_string(),
-                                    input_schema: tool
-                                        .get("inputSchema")
-                                        .cloned()
-                                        .unwrap_or(json!({})),
-                                    server_name: server_name.to_string(),
+                                        name: name.to_string(),
+                                        description: description.to_string(),
+                                        input_schema: tool
+                                            .get("inputSchema")
+                                            .cloned()
+                                            .unwrap_or(json!({})),
+                                        server_name: server_name.to_string(),
                                     })
                                 } else {
                                     None
@@ -1359,9 +1359,9 @@ impl BridgeState {
                                     name: name.to_string(),
                                     description: description.to_string(),
                                     input_schema: tool
-                                    .get("inputSchema")
-                                    .cloned()
-                                    .unwrap_or(json!({})),
+                                        .get("inputSchema")
+                                        .cloned()
+                                        .unwrap_or(json!({})),
                                     server_name: server_name.to_string(),
                                 })
                             } else {

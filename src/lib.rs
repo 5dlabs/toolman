@@ -19,9 +19,9 @@ pub mod context;
 pub mod config;
 
 // Re-export key types for convenience
+pub use client::McpClient;
 pub use config::{ClientInfo, ExecutionContext, ServerConfig, SystemConfigManager};
 pub use context::{ContextConfig, ContextManager};
-pub use client::McpClient;
 
 /// Helper function to resolve working directory patterns
 pub fn resolve_working_directory(working_dir: &str, project_dir: &std::path::Path) -> PathBuf {
