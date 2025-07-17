@@ -50,9 +50,9 @@ RUN chmod +x /usr/local/bin/toolman-http /usr/local/bin/toolman
 # Create non-root user (use a different UID since 1000 exists)
 RUN useradd -m -u 1001 -s /bin/bash mcp
 
-# Create directories for configs
-RUN mkdir -p /config && \
-    chown mcp:mcp /config
+# Create directories for configs and npm cache
+RUN mkdir -p /config /home/mcp/.npm && \
+    chown -R mcp:mcp /config /home/mcp
 
 # Set up environment for all runtimes
 ENV PORT=3000 \

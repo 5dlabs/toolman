@@ -101,6 +101,8 @@ volumes:
       name: toolman-config
   - name: tmp
     emptyDir: {}
+  - name: npm-cache
+    emptyDir: {}
 
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts:
@@ -109,6 +111,8 @@ volumeMounts:
     readOnly: true
   - name: tmp
     mountPath: /tmp
+  - name: npm-cache
+    mountPath: /home/mcp/.npm
 
 nodeSelector: {}
 
