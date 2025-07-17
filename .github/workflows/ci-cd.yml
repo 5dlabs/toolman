@@ -524,13 +524,26 @@ jobs:
   deploy:
     needs: [version, build-binaries, build-docker, security-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, k8s-runner]
     environment: production
     permissions:
       contents: read
       packages: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup tools
+        run: |
+          mkdir -p $HOME/bin
+          if [ -f /shared/kubectl ]; then
+            cp /shared/kubectl $HOME/bin/
+            chmod +x $HOME/bin/kubectl
+          fi
+          if [ -f /shared/helm ]; then
+            cp /shared/helm $HOME/bin/
+            chmod +x $HOME/bin/helm
+          fi
+          echo "$HOME/bin" >> $GITHUB_PATH
 
       - name: Deploy to production
         run: |
@@ -543,6 +556,7 @@ jobs:
           helm upgrade --install toolman ./charts/toolman \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ needs.version.outputs.version }} \
+            --set image.pullPolicy=Always \
             --namespace mcp \
             --wait --timeout=300s \
             --debug
