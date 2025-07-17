@@ -18,10 +18,16 @@ pub mod context;
 // Configuration management
 pub mod config;
 
+// Session management
+pub mod session;
+pub mod session_store;
+
 // Re-export key types for convenience
 pub use config::{
     ClientInfo, ExecutionContext, ServerConfig, SessionConfig, SessionSettings, SystemConfigManager,
 };
+pub use session::{SessionContext, SessionInitRequest, SessionInitResponse, ToolSource};
+pub use session_store::SessionStore;
 pub use context::{ContextConfig, ContextManager};
 pub use stdio_wrapper::StdioWrapper;
 

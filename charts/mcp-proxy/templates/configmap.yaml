@@ -15,21 +15,36 @@ data:
           "command": "npx",
           "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
           "env": {},
-          "enabled": true
+          "enabled": true,
+          "executionContext": "remote"
         },
-        "brave-search": {
+        "web-search": {
           "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-          "env": {
-            "BRAVE_API_KEY": ""
-          },
-          "enabled": false
-        },
-        "fetch": {
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-fetch"],
+          "args": ["-y", "@modelcontextprotocol/server-web-search"],
           "env": {},
-          "enabled": true
+          "enabled": true,
+          "executionContext": "remote"
+        },
+        "python-example": {
+          "command": "python3",
+          "args": ["-c", "print('Python MCP server stub - would run actual Python MCP server here')"],
+          "env": {},
+          "enabled": true,
+          "executionContext": "remote"
+        },
+        "go-example": {
+          "command": "go",
+          "args": ["version"],
+          "env": {},
+          "enabled": true,
+          "executionContext": "remote"
+        },
+        "java-example": {
+          "command": "java",
+          "args": ["-version"],
+          "env": {},
+          "enabled": true,
+          "executionContext": "remote"
         }
       }
     }
