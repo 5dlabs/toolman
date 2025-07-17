@@ -193,13 +193,9 @@ impl ServerConnectionPool {
     /// Check if Docker is available and ready
     async fn is_docker_ready(&self) -> bool {
         use tokio::process::Command;
-        
+
         // Try to run docker version command
-        match Command::new("docker")
-            .arg("version")
-            .output()
-            .await
-        {
+        match Command::new("docker").arg("version").output().await {
             Ok(output) => {
                 if output.status.success() {
                     println!("✅ Docker is available and ready");
@@ -219,27 +215,33 @@ impl ServerConnectionPool {
     /// Wait for Docker to be ready with timeout and retry logic
     async fn wait_for_docker(&self, timeout_secs: u64) -> anyhow::Result<()> {
         use tokio::time::{sleep, Duration, Instant};
-        
+
         let start_time = Instant::now();
         let timeout = Duration::from_secs(timeout_secs);
         let retry_interval = Duration::from_secs(2);
-        
-        println!("🐳 Waiting for Docker to be ready (timeout: {}s)...", timeout_secs);
-        
+
+        println!(
+            "🐳 Waiting for Docker to be ready (timeout: {}s)...",
+            timeout_secs
+        );
+
         loop {
             if self.is_docker_ready().await {
                 println!("✅ Docker is ready (elapsed: {:?})", start_time.elapsed());
                 return Ok(());
             }
-            
+
             if start_time.elapsed() >= timeout {
                 return Err(anyhow::anyhow!(
                     "Docker not ready after {} seconds. Docker-based MCP servers may not work.",
                     timeout_secs
                 ));
             }
-            
-            println!("⏳ Docker not ready yet, retrying in {}s...", retry_interval.as_secs());
+
+            println!(
+                "⏳ Docker not ready yet, retrying in {}s...",
+                retry_interval.as_secs()
+            );
             sleep(retry_interval).await;
         }
     }
@@ -278,7 +280,10 @@ impl ServerConnectionPool {
 
         // Check if this is a Docker-based server and ensure Docker is ready
         if config.command == "docker" {
-            println!("🐳 [{}] Detected Docker-based server, checking Docker readiness...", server_name);
+            println!(
+                "🐳 [{}] Detected Docker-based server, checking Docker readiness...",
+                server_name
+            );
             if let Err(e) = self.wait_for_docker(30).await {
                 println!("⚠️ [{}] Docker readiness check failed: {}", server_name, e);
                 // Continue anyway, but warn that it might not work
@@ -969,7 +974,10 @@ impl BridgeState {
 
         // Check if this is a Docker-based server and ensure Docker is ready
         if config.command == "docker" {
-            println!("🐳 [{}] Detected Docker-based server, checking Docker readiness...", server_name);
+            println!(
+                "🐳 [{}] Detected Docker-based server, checking Docker readiness...",
+                server_name
+            );
             if let Err(e) = self.connection_pool.wait_for_docker(30).await {
                 println!("⚠️ [{}] Docker readiness check failed: {}", server_name, e);
                 // Continue anyway, but warn that it might not work
