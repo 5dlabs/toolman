@@ -203,10 +203,10 @@ async fn test_rustdocs_sse_via_toolman_server() {
 async fn test_rustdocs_sse_direct() {
     // Test Rust Docs SSE transport directly - reproduce the exact production issue
     println!("🧪 Testing Rust Docs SSE transport directly");
-    
+
     let client = reqwest::Client::new();
     let sse_url = "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/sse";
-    
+
     // Step 1: Get session ID from SSE endpoint
     println!("🔄 Step 1: Getting session ID from SSE endpoint");
     let sse_result = timeout(Duration::from_secs(5), async {
@@ -216,20 +216,22 @@ async fn test_rustdocs_sse_direct() {
             .send()
             .await
     });
-    
+
     let session_id = match sse_result.await {
         Ok(Ok(response)) => {
             println!("✅ SSE endpoint response status: {}", response.status());
-            let content_type = response.headers().get("content-type")
+            let content_type = response
+                .headers()
+                .get("content-type")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("");
             println!("📋 Content-Type: {}", content_type);
-            
+
             if content_type.contains("text/event-stream") {
                 // Read first chunk to get session info
                 use futures::StreamExt;
                 let mut body = response.bytes_stream();
-                
+
                 let first_chunk = match timeout(Duration::from_secs(3), body.next()).await {
                     Ok(Some(Ok(chunk))) => String::from_utf8_lossy(&chunk).to_string(),
                     Ok(Some(Err(e))) => {
@@ -245,11 +247,12 @@ async fn test_rustdocs_sse_direct() {
                         return;
                     }
                 };
-                
+
                 println!("📦 First SSE chunk: {}", first_chunk);
-                
+
                 // Parse session ID from SSE format
-                if let Some(data_line) = first_chunk.lines().find(|line| line.starts_with("data: ")) {
+                if let Some(data_line) = first_chunk.lines().find(|line| line.starts_with("data: "))
+                {
                     let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
                     if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
                         let session_id = session_param.to_string();
@@ -277,20 +280,20 @@ async fn test_rustdocs_sse_direct() {
             return;
         }
     };
-    
+
     // Skip initialize and go directly to tools/list to test the fix
     println!("🔄 Step 2: Testing direct tools/list request (skipping initialize)");
     let base_url = sse_url.trim_end_matches("/sse").trim_end_matches('/');
     let message_url = format!("{}/message?sessionId={}", base_url, session_id);
     println!("📤 Message URL: {}", message_url);
-    
+
     let tools_request = json!({
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/list",
         "params": {}
     });
-    
+
     println!("📤 Sending tools/list request directly (no initialize)...");
     let tools_result = timeout(Duration::from_secs(10), async {
         client
@@ -301,19 +304,26 @@ async fn test_rustdocs_sse_direct() {
             .send()
             .await
     });
-    
+
     match tools_result.await {
         Ok(Ok(tools_response)) => {
             let status = tools_response.status();
             println!("✅ Tools response status: {}", status);
             let tools_text = tools_response.text().await.unwrap_or_default();
-            println!("📦 Tools response (first 500 chars): {}", 
-                    tools_text.chars().take(500).collect::<String>());
-            
+            println!(
+                "📦 Tools response (first 500 chars): {}",
+                tools_text.chars().take(500).collect::<String>()
+            );
+
             if status.is_success() {
-                println!("✅ Direct tools/list request succeeded - SSE session timeout fix working!");
+                println!(
+                    "✅ Direct tools/list request succeeded - SSE session timeout fix working!"
+                );
             } else {
-                println!("❌ Direct tools/list request failed with status: {}", status);
+                println!(
+                    "❌ Direct tools/list request failed with status: {}",
+                    status
+                );
             }
         }
         Ok(Err(e)) => {
@@ -323,7 +333,7 @@ async fn test_rustdocs_sse_direct() {
             println!("❌ Tools request timed out");
         }
     }
-    
+
     println!("🏁 Rust Docs SSE direct test completed");
 }
 
