@@ -42,10 +42,9 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
 # Install minimal Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 
-# Copy the prebuilt binaries from CI/CD artifacts
+# Copy the prebuilt server binary from CI/CD artifacts
 COPY toolman-server-linux /usr/local/bin/toolman-server
-COPY toolman-client-linux /usr/local/bin/toolman-client
-RUN chmod +x /usr/local/bin/toolman-server /usr/local/bin/toolman-client
+RUN chmod +x /usr/local/bin/toolman-server
 
 # Create non-root user (use a different UID since 1000 exists)
 RUN useradd -m -u 1001 -s /bin/bash mcp
