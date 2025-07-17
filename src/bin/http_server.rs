@@ -614,13 +614,19 @@ impl ServerConnectionPool {
 
                         if content_type.contains("text/event-stream") {
                             // This is an SSE endpoint, parse the session info
-                            let body = response.text().await.map_err(|e| {
-                                anyhow::anyhow!("Failed to read SSE response: {}", e)
-                            })?;
+                            // For SSE, we only need to read the initial chunk with session ID
+                            let mut body = response.bytes_stream();
+                            use futures::StreamExt;
+                            
+                            let first_chunk = match body.next().await {
+                                Some(Ok(chunk)) => String::from_utf8_lossy(&chunk).to_string(),
+                                Some(Err(e)) => return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e)),
+                                None => return Err(anyhow::anyhow!("No data received from SSE endpoint")),
+                            };
 
                             // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
                             let session_id = if let Some(data_line) =
-                                body.lines().find(|line| line.starts_with("data: "))
+                                first_chunk.lines().find(|line| line.starts_with("data: "))
                             {
                                 let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
                                 if let Some(session_param) =
@@ -916,13 +922,19 @@ impl BridgeState {
 
                         if content_type.contains("text/event-stream") {
                             // This is an SSE endpoint, parse the session info
-                            let body = response.text().await.map_err(|e| {
-                                anyhow::anyhow!("Failed to read SSE response: {}", e)
-                            })?;
+                            // For SSE, we only need to read the initial chunk with session ID
+                            let mut body = response.bytes_stream();
+                            use futures::StreamExt;
+                            
+                            let first_chunk = match body.next().await {
+                                Some(Ok(chunk)) => String::from_utf8_lossy(&chunk).to_string(),
+                                Some(Err(e)) => return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e)),
+                                None => return Err(anyhow::anyhow!("No data received from SSE endpoint")),
+                            };
 
                             // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
                             let session_id = if let Some(data_line) =
-                                body.lines().find(|line| line.starts_with("data: "))
+                                first_chunk.lines().find(|line| line.starts_with("data: "))
                             {
                                 let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
                                 if let Some(session_param) =
