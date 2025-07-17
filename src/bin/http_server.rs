@@ -599,7 +599,8 @@ impl ServerConnectionPool {
                 // Check if this is an rmcp SSE endpoint (URL ends with /sse)
                 if url.ends_with("/sse") {
                     // Use rmcp SSE bidirectional communication
-                    return call_tool_via_rmcp_sse(&client, server_name, url, tool_name, arguments).await;
+                    return call_tool_via_rmcp_sse(&client, server_name, url, tool_name, arguments)
+                        .await;
                 } else {
                     // Direct HTTP endpoint (like Solana)
                     let request_body = json!({
@@ -2342,7 +2343,10 @@ async fn call_tool_via_rmcp_sse(
     use futures::StreamExt;
     use tokio::time::{timeout, Duration};
 
-    println!("🚀 [{}] Starting rmcp SSE tool call: {}", server_name, tool_name);
+    println!(
+        "🚀 [{}] Starting rmcp SSE tool call: {}",
+        server_name, tool_name
+    );
 
     // Step 1: Open SSE connection and get session ID
     let sse_response = client
