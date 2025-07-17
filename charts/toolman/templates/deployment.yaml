@@ -37,30 +37,32 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
+              echo "Setting up kubeconfig, npm cache, and docker data..."
+              # Setup kubeconfig
               mkdir -p /data/.kube
               cp /tmp/kubeconfig-secret/KUBECONFIG /data/.kube/config
               chmod 600 /data/.kube/config
-              # Fix npm cache permissions - create symlink approach
-              mkdir -p /data/npm-cache
-              chown -R 1001:2375 /data/npm-cache
               chown -R 1001:2375 /data/.kube
-              # Create npm cache directory and ensure proper permissions
-              mkdir -p /data/npm-cache
-              mkdir -p /data/home-mcp
-              chown -R 1001:2375 /data/npm-cache
-              chown -R 1001:2375 /data/home-mcp
-              # Create symlink structure for npm cache
-              ln -sf /data/npm-cache /data/home-mcp/.npm
-              # Create docker data directory for persistent image storage
+              
+              # Setup npm cache in home directory (now directly mounted PVC)
+              mkdir -p /home/mcp/.npm
+              mkdir -p /home/mcp/.npm/_logs  
+              chown -R 1001:2375 /home/mcp
+              chmod 755 /home/mcp/.npm
+              
+              # Setup docker data directory for persistent image storage
               mkdir -p /data/docker-data
               chown -R root:root /data/docker-data
-              echo "Kubeconfig, npm cache, and docker data setup complete"
+              
+              echo "Setup complete: kubeconfig, npm cache, and docker data"
           volumeMounts:
             - name: kubeconfig
               mountPath: /tmp/kubeconfig-secret
               readOnly: true
             - name: data
               mountPath: /data
+            - name: home-mcp-pvc
+              mountPath: /home/mcp
       {{- end }}
       containers:
         - name: {{ .Chart.Name }}

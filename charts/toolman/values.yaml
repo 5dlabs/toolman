@@ -108,6 +108,9 @@ volumes:
     emptyDir: {}
   - name: docker-data
     emptyDir: {}
+  - name: home-mcp-pvc
+    persistentVolumeClaim:
+      claimName: home-mcp-data
 
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts:
@@ -118,9 +121,8 @@ volumeMounts:
     mountPath: /tmp
   - name: data
     mountPath: /data
-  - name: data
+  - name: home-mcp-pvc
     mountPath: /home/mcp
-    subPath: home-mcp
   - name: docker-sock-dir
     mountPath: /var/run
 

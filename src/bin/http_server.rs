@@ -596,111 +596,40 @@ impl ServerConnectionPool {
                 // Create HTTP client if not exists
                 let client = reqwest::Client::new();
 
-                // Check if this is an SSE endpoint by trying to GET the URL
-                // Only try SSE detection if the URL ends with /sse
-                let message_url = if url.ends_with("/sse") {
-                    let sse_response = client
-                        .get(url)
-                        .header("Accept", "text/event-stream")
-                        .send()
-                        .await;
-
-                    if let Ok(response) = sse_response {
-                        let content_type = response
-                            .headers()
-                            .get("content-type")
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("");
-
-                        if content_type.contains("text/event-stream") {
-                            // This is an SSE endpoint, parse the session info
-                            // For SSE, we only need to read the initial chunk with session ID
-                            let mut body = response.bytes_stream();
-                            use futures::StreamExt;
-
-                            let first_chunk = match tokio::time::timeout(
-                                tokio::time::Duration::from_secs(10),
-                                body.next(),
-                            )
-                            .await
-                            {
-                                Ok(Some(Ok(chunk))) => String::from_utf8_lossy(&chunk).to_string(),
-                                Ok(Some(Err(e))) => {
-                                    return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e))
-                                }
-                                Ok(None) => {
-                                    return Err(anyhow::anyhow!(
-                                        "No data received from SSE endpoint"
-                                    ))
-                                }
-                                Err(_) => {
-                                    return Err(anyhow::anyhow!(
-                                        "Timeout waiting for SSE session data (waited 10s)"
-                                    ))
-                                }
-                            };
-
-                            // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
-                            let session_id = if let Some(data_line) =
-                                first_chunk.lines().find(|line| line.starts_with("data: "))
-                            {
-                                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
-                                if let Some(session_param) =
-                                    endpoint_path.split("sessionId=").nth(1)
-                                {
-                                    session_param.to_string()
-                                } else {
-                                    return Err(anyhow::anyhow!(
-                                        "No sessionId found in SSE response"
-                                    ));
-                                }
-                            } else {
-                                return Err(anyhow::anyhow!("No data line found in SSE response"));
-                            };
-
-                            // Construct the message URL
-                            let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
-                            format!("{}/message?sessionId={}", base_url, session_id)
-                        } else {
-                            // Not SSE, use original direct HTTP approach
-                            url.to_string()
-                        }
-                    } else {
-                        // Failed to GET, try original direct HTTP approach
-                        url.to_string()
-                    }
+                // Check if this is an rmcp SSE endpoint (URL ends with /sse)
+                if url.ends_with("/sse") {
+                    // Use rmcp SSE bidirectional communication
+                    return call_tool_via_rmcp_sse(&client, server_name, url, tool_name, arguments).await;
                 } else {
-                    // URL doesn't end with /sse, use direct HTTP approach
-                    url.to_string()
-                };
+                    // Direct HTTP endpoint (like Solana)
+                    let request_body = json!({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": tool_name,
+                            "arguments": arguments
+                        }
+                    });
 
-                // Create JSON-RPC request
-                let request_body = json!({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "tools/call",
-                    "params": {
-                        "name": tool_name,
-                        "arguments": arguments
-                    }
-                });
+                    // Send HTTP POST request with proper Accept headers
+                    let response = client
+                        .post(url)
+                        .header("Accept", "application/json, text/event-stream")
+                        .json(&request_body)
+                        .send()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
 
-                // Send HTTP POST request
-                let response = client
-                    .post(&message_url)
-                    .json(&request_body)
-                    .send()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
+                    // Parse response
+                    let response_json: Value = response
+                        .json()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to parse HTTP response: {}", e))?;
 
-                // Parse response
-                let response_json: Value = response
-                    .json()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to parse HTTP response: {}", e))?;
-
-                println!("📨 Received HTTP response from server {}", server_name);
-                return Ok(response_json);
+                    println!("📨 Received HTTP response from server {}", server_name);
+                    return Ok(response_json);
+                }
             } else {
                 return Err(anyhow::anyhow!("HTTP transport requires 'url' field"));
             }
@@ -2400,6 +2329,206 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Call a tool via rmcp SSE transport with bidirectional communication
+async fn call_tool_via_rmcp_sse(
+    client: &reqwest::Client,
+    server_name: &str,
+    sse_url: &str,
+    tool_name: &str,
+    arguments: Value,
+) -> anyhow::Result<Value> {
+    use futures::StreamExt;
+    use tokio::time::{timeout, Duration};
+
+    println!("🚀 [{}] Starting rmcp SSE tool call: {}", server_name, tool_name);
+
+    // Step 1: Open SSE connection and get session ID
+    let sse_response = client
+        .get(sse_url)
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to connect to SSE endpoint: {}", e))?;
+
+    let mut body = sse_response.bytes_stream();
+
+    // Wait for session data from SSE stream (up to 10 seconds)
+    let session_id = match timeout(Duration::from_secs(10), body.next()).await {
+        Ok(Some(Ok(chunk))) => {
+            let chunk_str = String::from_utf8_lossy(&chunk);
+            println!(
+                "🔗 [{}] SSE handshake data: {}",
+                server_name,
+                chunk_str.trim()
+            );
+
+            // Parse session ID from "data: /message?sessionId=xxx"
+            if let Some(data_line) = chunk_str.lines().find(|line| line.starts_with("data: ")) {
+                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                    session_param.to_string()
+                } else {
+                    return Err(anyhow::anyhow!("No sessionId found in SSE data"));
+                }
+            } else {
+                return Err(anyhow::anyhow!("No data line found in SSE response"));
+            }
+        }
+        Ok(Some(Err(e))) => return Err(anyhow::anyhow!("SSE stream error: {}", e)),
+        Ok(None) => return Err(anyhow::anyhow!("SSE stream ended unexpectedly")),
+        Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
+    };
+
+    println!(
+        "✅ [{}] Got rmcp SSE session ID: {}",
+        server_name, session_id
+    );
+
+    // Step 2: Prepare message endpoint
+    let base_url = sse_url.trim_end_matches("/sse").trim_end_matches('/');
+    let message_url = format!("{}/message?sessionId={}", base_url, session_id);
+
+    // Step 3: Start listening for responses in background task
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+    // Spawn SSE response listener
+    let tx_clone = tx.clone();
+    let server_name_clone = server_name.to_string();
+    tokio::spawn(async move {
+        while let Some(chunk_result) = body.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    // Look for "event: message" followed by "data: {...}"
+                    let lines: Vec<&str> = chunk_str.lines().collect();
+                    for i in 0..lines.len() {
+                        if lines[i] == "event: message" && i + 1 < lines.len() {
+                            if let Some(data_line) = lines.get(i + 1) {
+                                if let Some(json_str) = data_line.strip_prefix("data: ") {
+                                    if let Ok(response) =
+                                        serde_json::from_str::<serde_json::Value>(json_str)
+                                    {
+                                        println!(
+                                            "📨 [{}] SSE response received",
+                                            server_name_clone
+                                        );
+                                        let _ = tx_clone.send(response);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ [{}] SSE stream error: {}", server_name_clone, e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Step 4: Send MCP handshake sequence
+
+    // 4a. Send initialize request
+    let initialize_request = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "toolman",
+                "version": "1.0.0"
+            }
+        }
+    });
+
+    let init_response = client
+        .post(&message_url)
+        .json(&initialize_request)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send initialize request: {}", e))?;
+
+    if !init_response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Initialize request failed with status: {}",
+            init_response.status()
+        ));
+    }
+
+    // Wait for initialize response
+    let _init_resp = match timeout(Duration::from_secs(10), rx.recv()).await {
+        Ok(Some(response)) => response,
+        Ok(None) => return Err(anyhow::anyhow!("SSE channel closed during initialize")),
+        Err(_) => return Err(anyhow::anyhow!("Timeout waiting for initialize response")),
+    };
+
+    println!("✅ [{}] MCP initialize completed", server_name);
+
+    // 4b. Send initialized notification
+    let initialized_notification = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    });
+
+    let notif_response = client
+        .post(&message_url)
+        .json(&initialized_notification)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send initialized notification: {}", e))?;
+
+    if !notif_response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Initialized notification failed with status: {}",
+            notif_response.status()
+        ));
+    }
+
+    println!("✅ [{}] MCP session established", server_name);
+
+    // Step 5: Send the actual tool call request
+    let tool_call_request = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": arguments
+        }
+    });
+
+    println!("🔧 [{}] Sending tool call: {}", server_name, tool_name);
+
+    let call_response = client
+        .post(&message_url)
+        .json(&tool_call_request)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send tool call request: {}", e))?;
+
+    if !call_response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Tool call request failed with status: {}",
+            call_response.status()
+        ));
+    }
+
+    // Step 6: Wait for tool call response via SSE
+    let tool_response = match timeout(Duration::from_secs(30), rx.recv()).await {
+        Ok(Some(response)) => response,
+        Ok(None) => return Err(anyhow::anyhow!("SSE channel closed during tool call")),
+        Err(_) => return Err(anyhow::anyhow!("Timeout waiting for tool call response")),
+    };
+
+    println!("✅ [{}] Tool call completed: {}", server_name, tool_name);
+
+    Ok(tool_response)
 }
 
 #[cfg(test)]
