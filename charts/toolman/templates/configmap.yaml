@@ -44,7 +44,11 @@ data:
           {{- if $serverConfig.url }}
           "url": {{ $serverConfig.url | quote }},
           {{- end }}
+          {{- if $serverConfig.env }}
+          "env": {{ $serverConfig.env | toJson }},
+          {{- else }}
           "env": {},
+          {{- end }}
           "tools": {},
           "executionContext": {{ $serverConfig.executionContext | default "remote" | quote }}
         }

@@ -30,6 +30,36 @@ spec:
       serviceAccountName: {{ include "toolman.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.config.servers.kubernetes.enabled }}
+      initContainers:
+        - name: setup-kubeconfig
+          image: alpine:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              mkdir -p /data/.kube
+              cp /tmp/kubeconfig-secret/KUBECONFIG /data/.kube/config
+              chmod 600 /data/.kube/config
+              # Fix npm cache permissions - create symlink approach
+              mkdir -p /data/npm-cache
+              chown -R 1001:2375 /data/npm-cache
+              chown -R 1001:2375 /data/.kube
+              # Ensure mcp user directory exists and link npm cache
+              mkdir -p /home/mcp
+              chown 1001:2375 /home/mcp
+              rm -rf /home/mcp/.npm
+              ln -s /data/npm-cache /home/mcp/.npm
+              # Create docker data directory for persistent image storage
+              mkdir -p /data/docker-data
+              chown -R root:root /data/docker-data
+              echo "Kubeconfig, npm cache, and docker data setup complete"
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /tmp/kubeconfig-secret
+              readOnly: true
+            - name: data
+              mountPath: /data
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
@@ -76,10 +106,14 @@ spec:
               {{- if .readOnly }}
               readOnly: {{ .readOnly }}
               {{- end }}
+              {{- if .subPath }}
+              subPath: {{ .subPath }}
+              {{- end }}
             {{- end }}
-            {{- if .Values.persistence.enabled }}
-            - name: data
-              mountPath: /data
+            {{- if .Values.config.servers.kubernetes.enabled }}
+            - name: kubeconfig
+              mountPath: /tmp/kubeconfig-secret
+              readOnly: true
             {{- end }}
         # Docker-in-Docker sidecar for Docker-based MCP servers
         - name: docker-daemon
@@ -94,6 +128,8 @@ spec:
               mountPath: /var/run
             - name: docker-data
               mountPath: /var/lib/docker
+            - name: data
+              mountPath: /data
           resources:
             requests:
               cpu: 100m
@@ -119,6 +155,11 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "toolman.pvcName" . }}
+        {{- end }}
+        {{- if .Values.config.servers.kubernetes.enabled }}
+        - name: kubeconfig
+          secret:
+            secretName: {{ .Values.config.servers.kubernetes.secretRef.name }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

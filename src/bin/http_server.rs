@@ -591,6 +591,47 @@ impl ServerConnectionPool {
                 // Create HTTP client if not exists
                 let client = reqwest::Client::new();
 
+                // Check if this is an SSE endpoint by trying to GET the URL
+                let sse_response = client
+                    .get(url)
+                    .header("Accept", "text/event-stream")
+                    .send()
+                    .await;
+
+                let message_url = if let Ok(response) = sse_response {
+                    let content_type = response.headers().get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    
+                    if content_type.contains("text/event-stream") {
+                        // This is an SSE endpoint, parse the session info
+                        let body = response.text().await
+                            .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
+                        
+                        // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
+                        let session_id = if let Some(data_line) = body.lines().find(|line| line.starts_with("data: ")) {
+                            let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                            if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                                session_param.to_string()
+                            } else {
+                                return Err(anyhow::anyhow!("No sessionId found in SSE response"));
+                            }
+                        } else {
+                            return Err(anyhow::anyhow!("No data line found in SSE response"));
+                        };
+
+                        // Construct the message URL
+                        let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
+                        format!("{}/message?sessionId={}", base_url, session_id)
+                    } else {
+                        // Not SSE, use original direct HTTP approach
+                        url.to_string()
+                    }
+                } else {
+                    // Failed to GET, try original direct HTTP approach
+                    url.to_string()
+                };
+
                 // Create JSON-RPC request
                 let request_body = json!({
                     "jsonrpc": "2.0",
@@ -604,7 +645,7 @@ impl ServerConnectionPool {
 
                 // Send HTTP POST request
                 let response = client
-                    .post(url)
+                    .post(&message_url)
                     .json(&request_body)
                     .send()
                     .await
@@ -837,6 +878,48 @@ impl BridgeState {
 
                 let client = reqwest::Client::new();
 
+                // Check if this is an SSE endpoint by trying to GET the URL
+                let sse_response = client
+                    .get(url)
+                    .header("Accept", "text/event-stream")
+                    .send()
+                    .await;
+
+                let (message_url, _session_id) = if let Ok(response) = sse_response {
+                    let content_type = response.headers().get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    
+                    if content_type.contains("text/event-stream") {
+                        // This is an SSE endpoint, parse the session info
+                        let body = response.text().await
+                            .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
+                        
+                        // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
+                        let session_id = if let Some(data_line) = body.lines().find(|line| line.starts_with("data: ")) {
+                            let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                            if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                                session_param.to_string()
+                            } else {
+                                return Err(anyhow::anyhow!("No sessionId found in SSE response"));
+                            }
+                        } else {
+                            return Err(anyhow::anyhow!("No data line found in SSE response"));
+                        };
+
+                        // Construct the message URL
+                        let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
+                        let message_url = format!("{}/message?sessionId={}", base_url, session_id);
+                        (message_url, session_id)
+                    } else {
+                        // Not SSE, use original direct HTTP approach
+                        (url.to_string(), String::new())
+                    }
+                } else {
+                    // Failed to GET, try original direct HTTP approach
+                    (url.to_string(), String::new())
+                };
+
                 // Initialize the server
                 let init_request = json!({
                     "jsonrpc": "2.0",
@@ -853,7 +936,7 @@ impl BridgeState {
                 });
 
                 let _init_response = client
-                    .post(url)
+                    .post(&message_url)
                     .json(&init_request)
                     .send()
                     .await
@@ -868,7 +951,7 @@ impl BridgeState {
                 });
 
                 let tools_response = client
-                    .post(url)
+                    .post(&message_url)
                     .json(&tools_request)
                     .send()
                     .await
