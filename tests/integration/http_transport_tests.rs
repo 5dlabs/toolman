@@ -34,8 +34,8 @@ async fn test_toolman_server_with_solana_config() {
     // Write test config
     std::fs::write("/tmp/servers-config.json", test_config.to_string()).unwrap();
 
-    // Start our server with the test config
-    let mut server = Command::new("target/release/toolman-server")
+    // Start our server with the test config - use debug binary for tests
+    let mut server = Command::new("target/debug/toolman-server")
         .arg("--port")
         .arg("3001")
         .env("PROJECT_DIR", "/tmp")
