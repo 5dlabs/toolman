@@ -15,14 +15,14 @@ NC='\033[0m' # No Color
 # Default values
 REPO="5dlabs/toolman"
 INSTALL_DIR="$HOME/.local/bin"
-BINARY_NAME="toolman"
-HTTP_BINARY_NAME="toolman-http"
+CLIENT_BINARY_NAME="toolman-client"
+SERVER_BINARY_NAME="toolman-server"
 VERSION="latest"
 FORCE=false
 UPDATE_CONFIG=true
 UPDATE_PATH=true
 MCP_CONFIG_FILE="$HOME/.cursor/mcp.json"
-INSTALL_HTTP_SERVER=true
+# Always install both client and server binaries
 
 # Function to print colored output
 print_info() {
@@ -111,7 +111,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --no-http)
-            INSTALL_HTTP_SERVER=false
+            # Both binaries are always installed
             shift
             ;;
         --config)
@@ -535,8 +535,8 @@ main() {
     local archive_name="toolman-${target}.tar.gz"
     local archive_url="$base_url/$archive_name"
 
-    local dest_cli_path="$INSTALL_DIR/$BINARY_NAME"
-    local dest_http_path="$INSTALL_DIR/$HTTP_BINARY_NAME"
+    local dest_cli_path="$INSTALL_DIR/$CLIENT_BINARY_NAME"
+    local dest_http_path="$INSTALL_DIR/$SERVER_BINARY_NAME"
     local temp_dir
     temp_dir=$(mktemp -d)
     local temp_archive="$temp_dir/$archive_name"
@@ -559,17 +559,16 @@ main() {
         exit 1
     fi
 
-    # Install CLI binary
-    if ! install_binary_from_archive "$temp_archive" "$INSTALL_DIR" "$BINARY_NAME"; then
-        print_error "Failed to install CLI binary"
+    # Install client binary
+    if ! install_binary_from_archive "$temp_archive" "$INSTALL_DIR" "$CLIENT_BINARY_NAME"; then
+        print_error "Failed to install client binary"
         exit 1
     fi
 
-    # Install HTTP server binary
-    if [[ "$INSTALL_HTTP_SERVER" == true ]]; then
-        if ! install_binary_from_archive "$temp_archive" "$INSTALL_DIR" "$HTTP_BINARY_NAME"; then
-            print_warning "Failed to install HTTP server binary, continuing..."
-        fi
+    # Install server binary
+    if ! install_binary_from_archive "$temp_archive" "$INSTALL_DIR" "$SERVER_BINARY_NAME"; then
+        print_error "Failed to install server binary"
+        exit 1
     fi
 
     # Create example configuration
@@ -589,7 +588,7 @@ main() {
     echo ""
     print_info "📋 Installation Summary:"
     print_info "  CLI Binary: $dest_cli_path"
-    if [[ "$INSTALL_HTTP_SERVER" == true ]] && [[ -f "$dest_http_path" ]]; then
+    if [[ -f "$dest_http_path" ]]; then
         print_info "  HTTP Server: $dest_http_path"
     fi
     print_info "  Version: $VERSION"
@@ -603,25 +602,25 @@ main() {
     print_info "  1. Copy and customize the example configuration:"
     print_info "     cp $INSTALL_DIR/servers-config.example.json $INSTALL_DIR/servers-config.json"
     print_info "  2. Edit servers-config.json to enable/configure MCP servers"
-    if [[ "$INSTALL_HTTP_SERVER" == true ]] && [[ -f "$dest_http_path" ]]; then
-        print_info "  3. Start the HTTP server: $HTTP_BINARY_NAME --port 3000"
+    if [[ -f "$dest_http_path" ]]; then
+        print_info "  3. Start the HTTP server: $SERVER_BINARY_NAME --port 3000"
     fi
     print_info "  4. Restart Cursor to load the new MCP server"
 
     echo ""
     print_info "📖 Usage Examples:"
     print_info "  # Use as MCP stdio server (automatically configured in Cursor)"
-    print_info "  $BINARY_NAME"
+    print_info "  $CLIENT_BINARY_NAME"
     echo ""
-    if [[ "$INSTALL_HTTP_SERVER" == true ]] && [[ -f "$dest_http_path" ]]; then
+    if [[ -f "$dest_http_path" ]]; then
         print_info "  # Run HTTP server for centralized management"
-        print_info "  $HTTP_BINARY_NAME --port 3000 --project-dir ."
+        print_info "  $SERVER_BINARY_NAME --port 3000 --project-dir ."
         echo ""
     fi
     print_info "  # View available MCP servers"
-    print_info "  $BINARY_NAME --list-servers"
+    print_info "  $CLIENT_BINARY_NAME --list-servers"
     print_info "  # Enable/disable servers"
-    print_info "  $BINARY_NAME --enable filesystem --disable brave-search"
+    print_info "  $CLIENT_BINARY_NAME --enable filesystem --disable brave-search"
 
     echo ""
     print_info "🔗 Documentation:"
