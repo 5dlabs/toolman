@@ -523,7 +523,7 @@ jobs:
   # Deploy to production
   deploy:
     needs: [version, build-binaries, build-docker, security-scan]
-    if: false # Disabled - no kubeconfig configured in CI
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -532,26 +532,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure kubectl
-        run: |
-          # This would typically configure kubectl to connect to your production cluster
-          # For now, this is a placeholder that would need to be customized for your environment
-          echo "🚀 Configuring kubectl for production deployment..."
-          echo "Note: This needs to be configured with your actual Kubernetes cluster credentials"
-
       - name: Deploy to production
         run: |
-          echo "🚀 Deploying ${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }} to mcp namespace..."
+          echo "🚀 Deploying ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }} to mcp namespace..."
           
-          helm upgrade --install toolman ./charts/mcp-proxy \
+          # Ensure namespace exists
+          kubectl create namespace mcp --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Deploy with Helm
+          helm upgrade --install toolman ./charts/toolman \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ needs.version.outputs.version }} \
             --namespace mcp \
-            --create-namespace \
-            --wait --timeout=300s
+            --wait --timeout=300s \
+            --debug
           
           echo "✅ Production deployment completed successfully"
-          echo "🔗 Application URL: https://your-production-domain.com"
+          
+          # Show deployment status
+          kubectl get pods -n mcp -l app.kubernetes.io/name=toolman
+          kubectl get services -n mcp -l app.kubernetes.io/name=toolman
 
   # Create GitHub Release (only for tags)
   create-release:
