@@ -1,26 +1,34 @@
-# Session-Based MCP Proxy Architecture
+# Session-Based MCP Tool Filtering Architecture
 
 ## Overview
 
-The MCP Proxy implements a session-based architecture to enable multi-tenant operation with intelligent local vs remote execution context routing. This design allows multiple agents/clients to safely share the same proxy server while maintaining isolation and optimal execution placement.
+The MCP Proxy implements a session-based tool filtering architecture to enable multi-tenant operation with intelligent local vs remote execution context routing. This design allows multiple coding agents to request specific subsets of tools from shared MCP servers while maintaining isolation and optimal execution placement.
 
 ## Problem Statement
 
-### Multi-Agent Conflicts
-Without session isolation, multiple agents connecting to the same proxy would experience:
+### Tool Filtering Challenges
+Without session-based tool filtering, multiple coding agents would experience:
 
-- **Configuration Conflicts**: Agent A configures filesystem for `/project-a`, Agent B overwrites with `/project-b`
-- **Security Issues**: Agent A could access Agent B's files or API keys
-- **Resource Contention**: MCP servers receive mixed requests from different clients
-- **State Corruption**: Shared server state leads to unpredictable behavior
+- **Tool Pollution**: Agent A wants only filesystem tools, but sees all 50+ tools from all servers
+- **Security Issues**: Agent A could access tools/capabilities it shouldn't have
+- **Configuration Complexity**: No way to give agents only the tools they need
+- **Context Conflicts**: Multiple agents using same tools with different working directories
 
-### Local vs Remote Execution
-Different MCP servers have different optimal execution contexts:
+### Local vs Remote Tool Execution
+Different MCP tools have different optimal execution contexts:
 
-- **Filesystem operations**: Must run locally to access client's actual files
-- **Web APIs**: Better performance and network access from server
-- **Databases**: Already running in cluster, better to keep server-side
-- **Processing**: More compute resources available on server
+- **Filesystem tools**: Must run locally to access client's actual project files
+- **Web API tools**: Better performance and network access from server infrastructure  
+- **Database tools**: Already running in cluster, better to keep server-side
+- **Processing tools**: More compute resources available on server
+
+### Local Server Management Challenge
+When a coding agent requests a tool that requires local execution (e.g., `filesystem_read_file`):
+
+- **Server Discovery**: Is the required local MCP server already running?
+- **Server Spawning**: If not, how do we start it in the client's context?
+- **Server Installation**: Future: How do we install new local servers (GitHub URL, etc.)?
+- **Working Directory**: How do we ensure the local server runs in the correct project directory?
 
 ## Session-Based Solution
 
@@ -28,31 +36,32 @@ Different MCP servers have different optimal execution contexts:
 
 ```mermaid
 sequenceDiagram
-    participant Client
+    participant Agent
     participant Proxy
     participant LocalServer
     participant RemoteServer
 
-    Client->>Proxy: POST /session/init
-    Note over Client,Proxy: Handshake with workingDir, capabilities
-    Proxy->>Proxy: Create session context
-    Proxy->>LocalServer: Spawn local servers
-    Proxy->>RemoteServer: Initialize remote servers
-    Proxy->>Client: Session config response
+    Agent->>Proxy: POST /session/init
+    Note over Agent,Proxy: Request specific tools + working directory
+    Proxy->>Proxy: Filter requested tools by availability
+    Proxy->>Proxy: Determine execution context per tool
+    Proxy->>LocalServer: Spawn required local servers
+    Proxy->>RemoteServer: Validate remote server access
+    Proxy->>Agent: Filtered tool list with routing info
 
-    Client->>Proxy: POST /mcp (with sessionId)
-    Proxy->>Proxy: Route based on execution context
-    alt Local execution
-        Proxy->>LocalServer: Forward request
-        LocalServer->>Proxy: Response
-    else Remote execution
-        Proxy->>RemoteServer: Forward request
-        RemoteServer->>Proxy: Response
+    Agent->>Proxy: POST /mcp (with sessionId + tool call)
+    Proxy->>Proxy: Route tool call based on execution context
+    alt Local tool execution
+        Proxy->>LocalServer: Forward tool call
+        LocalServer->>Proxy: Tool response
+    else Remote tool execution
+        Proxy->>RemoteServer: Forward tool call
+        RemoteServer->>Proxy: Tool response
     end
-    Proxy->>Client: Unified response
+    Proxy->>Agent: Tool response
 
-    Client->>Proxy: DELETE /session/{sessionId}
-    Proxy->>LocalServer: Cleanup local servers
+    Agent->>Proxy: DELETE /session/{sessionId}
+    Proxy->>LocalServer: Cleanup session-specific local servers
     Proxy->>Proxy: Clean session state
 ```
 
@@ -69,17 +78,29 @@ Content-Type: application/json
     "version": "1.0.0"
   },
   "workingDirectory": "/Users/alice/project-a",
-  "capabilities": {
-    "filesystem": true,
-    "experimental": ["local-execution"]
-  },
-  "preferences": {
-    "executionContext": {
-      "filesystem": "local",
-      "web-search": "remote",
-      "databases": "remote"
+  "localServers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/alice/project-a"],
+      "env": {},
+      "tools": ["filesystem_read_file", "filesystem_write_file", "filesystem_list_directory"]
+    },
+    {
+      "name": "git", 
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git"],
+      "env": {},
+      "tools": ["git_status", "git_commit", "git_diff"]
     }
-  }
+  ],
+  "requestedTools": [
+    {"name": "filesystem_read_file", "source": "local:filesystem"},
+    {"name": "filesystem_write_file", "source": "local:filesystem"},
+    {"name": "web_search", "source": "global:web-search"},
+    {"name": "memory_store", "source": "global:memory"},
+    {"name": "git_status", "source": "local:git"}
+  ]
 }
 ```
 
@@ -98,37 +119,80 @@ Content-Type: application/json
       "remote_execution": true
     }
   },
-  "servers": {
-    "filesystem": {
-      "executionContext": "local",
-      "workingDirectory": "/Users/alice/project-a",
-      "allowedDirectories": ["/Users/alice/project-a"]
-    },
+  "globalServers": {
     "web-search": {
-      "executionContext": "remote",
-      "endpoint": "internal"
+      "tools": ["web_search", "web_summarize"],
+      "status": "running"
     },
-    "brave-search": {
-      "executionContext": "remote", 
-      "endpoint": "internal",
-      "enabled": false,
-      "reason": "Missing BRAVE_API_KEY"
+    "memory": {
+      "tools": ["memory_store", "memory_retrieve", "memory_search"],
+      "status": "running"
+    },
+    "database": {
+      "tools": ["db_query", "db_insert", "db_update"],
+      "status": "running"
     }
   },
-  "tools": [
-    {
-      "name": "filesystem_read_file",
-      "executionContext": "local",
-      "server": "filesystem"
+  "localServers": {
+    "filesystem": {
+      "status": "spawned",
+      "workingDirectory": "/Users/alice/project-a",
+      "tools": ["filesystem_read_file", "filesystem_write_file", "filesystem_list_directory"]
     },
-    {
-      "name": "web_search",
-      "executionContext": "remote", 
-      "server": "web-search"
+    "git": {
+      "status": "spawned", 
+      "workingDirectory": "/Users/alice/project-a",
+      "tools": ["git_status", "git_commit", "git_diff"]
     }
+  },
+  "availableTools": [
+    {"name": "filesystem_read_file", "source": "local:filesystem", "status": "ready"},
+    {"name": "filesystem_write_file", "source": "local:filesystem", "status": "ready"},
+    {"name": "web_search", "source": "global:web-search", "status": "ready"},
+    {"name": "memory_store", "source": "global:memory", "status": "ready"},
+    {"name": "git_status", "source": "local:git", "status": "ready"}
   ]
 }
 ```
+
+### Global + Local Server Model
+
+#### Global Servers (Proxy-Managed)
+Global servers run on the proxy infrastructure and provide shared capabilities:
+
+- **Web APIs**: `web-search`, `brave-search` - Better network access from server
+- **Databases**: `postgresql`, `redis` - Already running in cluster  
+- **Memory/Storage**: `memory`, `vector-db` - Persistent storage with PVC
+- **Processing**: `image-generation`, `code-analysis` - More compute resources
+
+**Benefits**: Shared infrastructure, better performance, persistent state, centralized management
+
+#### Local Servers (Client-Spawned)  
+Local servers run in the client's execution context for file system access:
+
+- **Filesystem**: `filesystem` - Access client's actual project files
+- **Version Control**: `git` - Work with client's repository
+- **IDE Integration**: `editor` - Interact with client's development environment
+- **Local Tools**: Custom project-specific servers
+
+**Benefits**: Real file access, respect permissions, work with local environment
+
+#### Server Discovery Flow
+```mermaid
+graph TD
+    A[Client Session Request] --> B{Tool Requested}
+    B -->|local:filesystem| C[Spawn Local Server]
+    B -->|global:web-search| D[Connect to Global Server]
+    C --> E[Client's Working Directory]
+    D --> F[Proxy Infrastructure]
+    E --> G[Tool Available]
+    F --> G
+```
+
+#### Future Extensions
+- **GitHub Server Installation**: `{"source": "github", "url": "https://github.com/user/mcp-server"}`
+- **Docker Server Support**: `{"source": "docker", "image": "myserver:latest"}`
+- **Custom Command Servers**: `{"command": "/path/to/custom-server"}`
 
 ### Execution Context Routing
 
