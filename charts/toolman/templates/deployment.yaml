@@ -151,6 +151,9 @@ spec:
             {{- else }}
             name: {{ .configMap.name }}
             {{- end }}
+          {{- else if .persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .persistentVolumeClaim.claimName }}
           {{- else if .emptyDir }}
           emptyDir: {}
           {{- end }}
