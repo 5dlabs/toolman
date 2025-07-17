@@ -606,38 +606,44 @@ impl ServerConnectionPool {
                         .await;
 
                     if let Ok(response) = sse_response {
-                        let content_type = response.headers().get("content-type")
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("");
-                        
-                        if content_type.contains("text/event-stream") {
-                            // This is an SSE endpoint, parse the session info
-                            let body = response.text().await
-                                .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
-                            
-                            // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
-                            let session_id = if let Some(data_line) = body.lines().find(|line| line.starts_with("data: ")) {
-                                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
-                                if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
-                                    session_param.to_string()
-                                } else {
-                                    return Err(anyhow::anyhow!("No sessionId found in SSE response"));
-                                }
-                            } else {
-                                return Err(anyhow::anyhow!("No data line found in SSE response"));
-                            };
+                    let content_type = response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
 
-                            // Construct the message URL
-                            let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
-                            format!("{}/message?sessionId={}", base_url, session_id)
+                    if content_type.contains("text/event-stream") {
+                        // This is an SSE endpoint, parse the session info
+                        let body = response
+                            .text()
+                            .await
+                            .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
+
+                        // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
+                        let session_id = if let Some(data_line) =
+                            body.lines().find(|line| line.starts_with("data: "))
+                        {
+                            let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                            if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                                session_param.to_string()
+                            } else {
+                                return Err(anyhow::anyhow!("No sessionId found in SSE response"));
+                            }
                         } else {
-                            // Not SSE, use original direct HTTP approach
-                            url.to_string()
-                        }
+                            return Err(anyhow::anyhow!("No data line found in SSE response"));
+                        };
+
+                        // Construct the message URL
+                        let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
+                        format!("{}/message?sessionId={}", base_url, session_id)
                     } else {
-                        // Failed to GET, try original direct HTTP approach
+                        // Not SSE, use original direct HTTP approach
                         url.to_string()
                     }
+                } else {
+                    // Failed to GET, try original direct HTTP approach
+                    url.to_string()
+                }
                 } else {
                     // URL doesn't end with /sse, use direct HTTP approach
                     url.to_string()
@@ -899,39 +905,45 @@ impl BridgeState {
                         .await;
 
                     if let Ok(response) = sse_response {
-                        let content_type = response.headers().get("content-type")
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("");
-                        
-                        if content_type.contains("text/event-stream") {
-                            // This is an SSE endpoint, parse the session info
-                            let body = response.text().await
-                                .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
-                            
-                            // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
-                            let session_id = if let Some(data_line) = body.lines().find(|line| line.starts_with("data: ")) {
-                                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
-                                if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
-                                    session_param.to_string()
-                                } else {
-                                    return Err(anyhow::anyhow!("No sessionId found in SSE response"));
-                                }
-                            } else {
-                                return Err(anyhow::anyhow!("No data line found in SSE response"));
-                            };
+                    let content_type = response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
 
-                            // Construct the message URL
-                            let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
-                            let message_url = format!("{}/message?sessionId={}", base_url, session_id);
-                            (message_url, session_id)
+                    if content_type.contains("text/event-stream") {
+                        // This is an SSE endpoint, parse the session info
+                        let body = response
+                            .text()
+                            .await
+                            .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
+
+                        // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
+                        let session_id = if let Some(data_line) =
+                            body.lines().find(|line| line.starts_with("data: "))
+                        {
+                            let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                            if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                                session_param.to_string()
+                            } else {
+                                return Err(anyhow::anyhow!("No sessionId found in SSE response"));
+                            }
                         } else {
-                            // Not SSE, use original direct HTTP approach
-                            (url.to_string(), String::new())
-                        }
+                            return Err(anyhow::anyhow!("No data line found in SSE response"));
+                        };
+
+                        // Construct the message URL
+                        let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
+                        let message_url = format!("{}/message?sessionId={}", base_url, session_id);
+                        (message_url, session_id)
                     } else {
-                        // Failed to GET, try original direct HTTP approach
+                        // Not SSE, use original direct HTTP approach
                         (url.to_string(), String::new())
                     }
+                } else {
+                    // Failed to GET, try original direct HTTP approach
+                    (url.to_string(), String::new())
+                }
                 } else {
                     // URL doesn't end with /sse, use direct HTTP approach
                     (url.to_string(), String::new())
