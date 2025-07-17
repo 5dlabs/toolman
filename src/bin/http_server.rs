@@ -1939,7 +1939,17 @@ impl BridgeState {
                     available_tools.len()
                 );
 
-                // Add ALL tools - no filtering
+                // Add built-in toolman tools first
+                all_tools.push(json!({
+                    "name": "toolman_list_available_tools",
+                    "description": "Get available tools and MCP client config file structure for automated config generation.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }));
+
+                // Add ALL tools from servers - no filtering
                 for (prefixed_tool_name, tool) in available_tools.iter() {
                     println!("✅ Including tool: {}", prefixed_tool_name);
                     all_tools.push(json!({
@@ -1960,13 +1970,45 @@ impl BridgeState {
                 if let Some(params) = request.params {
                     if let Some(tool_name) = params.get("name").and_then(|v| v.as_str()) {
                         let result = {
-                            // Parse prefixed tool name and forward to server
-                            let config_manager = self.system_config_manager.read().await;
-                            let available_servers: Vec<String> =
-                                config_manager.get_servers().keys().cloned().collect();
-                            drop(config_manager);
+                            // Handle built-in toolman tools first
+                            if tool_name == "toolman_list_available_tools" {
+                                // Generate config structure for agents
+                                let available_tools = self.available_tools.read().await;
+                                let config_manager = self.system_config_manager.read().await;
+                                let _servers = config_manager.get_servers();
+                                
+                                let mut tools_by_server = std::collections::HashMap::new();
+                                for (prefixed_name, tool) in available_tools.iter() {
+                                    if let Some((server_name, tool_name)) = prefixed_name.split_once('_') {
+                                        tools_by_server.entry(server_name.to_string())
+                                            .or_insert_with(Vec::new)
+                                            .push(json!({
+                                                "name": tool_name,
+                                                "description": tool.description
+                                            }));
+                                    }
+                                }
 
-                            match parse_tool_name_with_servers(tool_name, &available_servers) {
+                                let config_structure = json!({
+                                    "toolman_proxy_url": "http://toolman.mcp.svc.cluster.local:3000/mcp",
+                                    "available_tools_by_server": tools_by_server,
+                                    "config_instructions": "Use 'toolman_proxy_url' as the MCP server URL. All tools are prefixed with 'servername_toolname' format."
+                                });
+
+                                json!({
+                                    "content": [{
+                                        "type": "text",
+                                        "text": serde_json::to_string_pretty(&config_structure).unwrap_or_else(|_| "Error formatting config".to_string())
+                                    }]
+                                })
+                            } else {
+                                // Parse prefixed tool name and forward to server
+                                let config_manager = self.system_config_manager.read().await;
+                                let available_servers: Vec<String> =
+                                    config_manager.get_servers().keys().cloned().collect();
+                                drop(config_manager);
+
+                                match parse_tool_name_with_servers(tool_name, &available_servers) {
                                 Ok(parsed_tool) => {
                                     // Get arguments for the tool call
                                     let mut arguments =
@@ -2051,6 +2093,7 @@ impl BridgeState {
                                         }]
                                     })
                                 }
+                            }
                             }
                         };
 
