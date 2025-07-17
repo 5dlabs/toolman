@@ -912,7 +912,9 @@ impl BridgeState {
 
                 // Check if this is an SSE endpoint by trying to GET the URL
                 // Only try SSE detection if the URL ends with /sse
+                println!("🔍 [{}] URL: {}, ends_with(/sse): {}", server_name, url, url.ends_with("/sse"));
                 let (message_url, _session_id) = if url.ends_with("/sse") {
+                    println!("🔄 [{}] Detected SSE endpoint, starting SSE handshake", server_name);
                     let sse_response = client
                         .get(url)
                         .header("Accept", "text/event-stream")
@@ -966,6 +968,8 @@ impl BridgeState {
                             let base_url = url.trim_end_matches("/sse").trim_end_matches('/');
                             let message_url =
                                 format!("{}/message?sessionId={}", base_url, session_id);
+                            println!("🔗 [{}] SSE session ID: {}", server_name, session_id);
+                            println!("🎯 [{}] SSE message URL: {}", server_name, message_url);
                             (message_url, session_id)
                         } else {
                             // Not SSE, use original direct HTTP approach
@@ -977,8 +981,11 @@ impl BridgeState {
                     }
                 } else {
                     // URL doesn't end with /sse, use direct HTTP approach
+                    println!("🔗 [{}] Using direct HTTP approach", server_name);
                     (url.to_string(), String::new())
                 };
+                
+                println!("🎯 [{}] Final message_url: {}", server_name, message_url);
 
                 // Initialize the server
                 let init_request = json!({
@@ -995,12 +1002,16 @@ impl BridgeState {
                     }
                 });
 
-                let _init_response = client
+                println!("📤 [{}] Sending initialize request to: {}", server_name, message_url);
+                let init_response = client
                     .post(&message_url)
+                    .header("Accept", "application/json, text/event-stream")
                     .json(&init_request)
                     .send()
                     .await
                     .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
+                
+                println!("📥 [{}] Initialize response status: {}", server_name, init_response.status());
 
                 // Get tools list
                 let tools_request = json!({
@@ -1010,17 +1021,52 @@ impl BridgeState {
                     "params": {}
                 });
 
+                println!("📤 [{}] Sending tools/list request to: {}", server_name, message_url);
                 let tools_response = client
                     .post(&message_url)
+                    .header("Accept", "application/json, text/event-stream")
                     .json(&tools_request)
                     .send()
                     .await
                     .map_err(|e| anyhow::anyhow!("HTTP tools request failed: {}", e))?;
 
-                let response_json: Value = tools_response
-                    .json()
-                    .await
+                println!("📥 [{}] Tools response status: {}", server_name, tools_response.status());
+                let response_text = tools_response.text().await.map_err(|e| anyhow::anyhow!("Failed to get response text: {}", e))?;
+                println!("🔍 [{}] Raw tools response: {}", server_name, response_text);
+                
+                // Handle SSE format responses (both direct HTTP endpoints like Solana and SSE endpoints like rustdocs)
+                let json_content = if response_text.contains("data: ") && (response_text.starts_with("event:") || response_text.starts_with("data:")) {
+                    println!("🔄 [{}] Detected SSE format response, extracting JSON data", server_name);
+                    // Extract JSON from SSE format - handle multiple possible formats:
+                    // 1. "event: message\ndata: {json}\n\n"
+                    // 2. "data: {json}\n\n"  
+                    // 3. Multiple data lines that need to be concatenated
+                    let data_lines: Vec<&str> = response_text
+                        .lines()
+                        .filter(|line| line.starts_with("data: "))
+                        .collect();
+                    
+                    if !data_lines.is_empty() {
+                        // Concatenate all data lines and remove "data: " prefix
+                        let combined_data = data_lines
+                            .iter()
+                            .map(|line| line.strip_prefix("data: ").unwrap_or(line))
+                            .collect::<Vec<_>>()
+                            .join("");
+                        println!("🔍 [{}] Extracted SSE data: {}", server_name, combined_data);
+                        combined_data
+                    } else {
+                        println!("⚠️ [{}] SSE format detected but no data lines found", server_name);
+                        response_text
+                    }
+                } else {
+                    response_text
+                };
+                
+                let response_json: Value = serde_json::from_str(&json_content)
                     .map_err(|e| anyhow::anyhow!("Failed to parse tools response: {}", e))?;
+                    
+                println!("🔍 [{}] Tools response JSON: {}", server_name, response_json);
 
                 // Parse tools from response
                 if let Some(result) = response_json.get("result") {
