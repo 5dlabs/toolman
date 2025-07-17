@@ -604,17 +604,23 @@ impl ServerConnectionPool {
                     .await;
 
                 let message_url = if let Ok(response) = sse_response {
-                    let content_type = response.headers().get("content-type")
+                    let content_type = response
+                        .headers()
+                        .get("content-type")
                         .and_then(|v| v.to_str().ok())
                         .unwrap_or("");
-                    
+
                     if content_type.contains("text/event-stream") {
                         // This is an SSE endpoint, parse the session info
-                        let body = response.text().await
+                        let body = response
+                            .text()
+                            .await
                             .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
-                        
+
                         // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
-                        let session_id = if let Some(data_line) = body.lines().find(|line| line.starts_with("data: ")) {
+                        let session_id = if let Some(data_line) =
+                            body.lines().find(|line| line.starts_with("data: "))
+                        {
                             let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
                             if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
                                 session_param.to_string()
@@ -891,17 +897,23 @@ impl BridgeState {
                     .await;
 
                 let (message_url, _session_id) = if let Ok(response) = sse_response {
-                    let content_type = response.headers().get("content-type")
+                    let content_type = response
+                        .headers()
+                        .get("content-type")
                         .and_then(|v| v.to_str().ok())
                         .unwrap_or("");
-                    
+
                     if content_type.contains("text/event-stream") {
                         // This is an SSE endpoint, parse the session info
-                        let body = response.text().await
+                        let body = response
+                            .text()
+                            .await
                             .map_err(|e| anyhow::anyhow!("Failed to read SSE response: {}", e))?;
-                        
+
                         // Parse SSE format: "event: endpoint\ndata: /message?sessionId=xxx"
-                        let session_id = if let Some(data_line) = body.lines().find(|line| line.starts_with("data: ")) {
+                        let session_id = if let Some(data_line) =
+                            body.lines().find(|line| line.starts_with("data: "))
+                        {
                             let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
                             if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
                                 session_param.to_string()
