@@ -103,6 +103,11 @@ volumes:
   - name: tmp
     emptyDir: {}
   - name: npm-cache
+    emptyDir: {}
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket
 
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts:
@@ -113,6 +118,8 @@ volumeMounts:
     mountPath: /tmp
   - name: npm-cache
     mountPath: /home/mcp/.npm
+  - name: docker-sock
+    mountPath: /var/run/docker.sock
 
 nodeSelector: {}
 
