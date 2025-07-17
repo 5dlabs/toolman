@@ -44,11 +44,13 @@ spec:
               mkdir -p /data/npm-cache
               chown -R 1001:2375 /data/npm-cache
               chown -R 1001:2375 /data/.kube
-              # Ensure mcp user directory exists and link npm cache
-              mkdir -p /home/mcp
-              chown 1001:2375 /home/mcp
-              rm -rf /home/mcp/.npm
-              ln -s /data/npm-cache /home/mcp/.npm
+              # Create npm cache directory and ensure proper permissions
+              mkdir -p /data/npm-cache
+              mkdir -p /data/home-mcp
+              chown -R 1001:2375 /data/npm-cache
+              chown -R 1001:2375 /data/home-mcp
+              # Create symlink structure for npm cache
+              ln -sf /data/npm-cache /data/home-mcp/.npm
               # Create docker data directory for persistent image storage
               mkdir -p /data/docker-data
               chown -R root:root /data/docker-data

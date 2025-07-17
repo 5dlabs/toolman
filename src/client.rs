@@ -57,12 +57,14 @@ impl McpClient {
         })
     }
 
-    /// Load new client configuration from servers-config.json
+    /// Load new client configuration from environment variable or default location
     fn load_client_config(working_dir: &Option<String>) -> Result<Option<ClientConfig>> {
-        let config_path = if let Some(dir) = working_dir {
-            PathBuf::from(dir).join("servers-config.json")
+        let config_path = if let Ok(config_path) = std::env::var("MCP_CLIENT_CONFIG") {
+            PathBuf::from(config_path)
+        } else if let Some(dir) = working_dir {
+            PathBuf::from(dir).join("client-config.json")
         } else {
-            PathBuf::from("servers-config.json")
+            PathBuf::from("client-config.json")
         };
 
         if config_path.exists() {

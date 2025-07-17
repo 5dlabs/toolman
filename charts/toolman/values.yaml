@@ -118,6 +118,9 @@ volumeMounts:
     mountPath: /tmp
   - name: data
     mountPath: /data
+  - name: data
+    mountPath: /home/mcp
+    subPath: home-mcp
   - name: docker-sock-dir
     mountPath: /var/run
 
