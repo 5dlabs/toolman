@@ -21,7 +21,7 @@ impl ToolmanServerTest {
         let test_config = json!({
             "servers": {
                 "test-http": {
-                    "name": "Test HTTP Server", 
+                    "name": "Test HTTP Server",
                     "description": "Test HTTP server for integration tests",
                     "transport": "http",
                     "url": "https://jsonplaceholder.typicode.com/posts/1",
