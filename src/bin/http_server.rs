@@ -618,14 +618,22 @@ impl ServerConnectionPool {
                             let mut body = response.bytes_stream();
                             use futures::StreamExt;
 
-                            let first_chunk = match body.next().await {
-                                Some(Ok(chunk)) => String::from_utf8_lossy(&chunk).to_string(),
-                                Some(Err(e)) => {
+                            let first_chunk = match tokio::time::timeout(
+                                tokio::time::Duration::from_secs(10),
+                                body.next()
+                            ).await {
+                                Ok(Some(Ok(chunk))) => String::from_utf8_lossy(&chunk).to_string(),
+                                Ok(Some(Err(e))) => {
                                     return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e))
                                 }
-                                None => {
+                                Ok(None) => {
                                     return Err(anyhow::anyhow!(
                                         "No data received from SSE endpoint"
+                                    ))
+                                }
+                                Err(_) => {
+                                    return Err(anyhow::anyhow!(
+                                        "Timeout waiting for SSE session data (waited 10s)"
                                     ))
                                 }
                             };
@@ -942,14 +950,22 @@ impl BridgeState {
                             let mut body = response.bytes_stream();
                             use futures::StreamExt;
 
-                            let first_chunk = match body.next().await {
-                                Some(Ok(chunk)) => String::from_utf8_lossy(&chunk).to_string(),
-                                Some(Err(e)) => {
+                            let first_chunk = match tokio::time::timeout(
+                                tokio::time::Duration::from_secs(10),
+                                body.next()
+                            ).await {
+                                Ok(Some(Ok(chunk))) => String::from_utf8_lossy(&chunk).to_string(),
+                                Ok(Some(Err(e))) => {
                                     return Err(anyhow::anyhow!("Failed to read SSE chunk: {}", e))
                                 }
-                                None => {
+                                Ok(None) => {
                                     return Err(anyhow::anyhow!(
                                         "No data received from SSE endpoint"
+                                    ))
+                                }
+                                Err(_) => {
+                                    return Err(anyhow::anyhow!(
+                                        "Timeout waiting for SSE session data (waited 10s)"
                                     ))
                                 }
                             };
@@ -1975,6 +1991,62 @@ async fn mcp_endpoint(
     }
 }
 
+// Client configuration endpoint - generates MCP client config with all tools disabled by default
+async fn client_config_endpoint(State(state): State<BridgeState>) -> Result<Json<Value>, StatusCode> {
+    let available_tools = state.available_tools.read().await;
+    let config_manager = state.system_config_manager.read().await;
+    let servers = config_manager.get_servers();
+    
+    // Group tools by server
+    let mut tools_by_server: HashMap<String, Vec<Value>> = HashMap::new();
+    
+    for (_tool_key, tool) in available_tools.iter() {
+        let server_name = &tool.server_name;
+        let tool_config = json!({
+            "name": tool.name,
+            "description": tool.description,
+            "enabled": false, // All tools disabled by default
+            "inputSchema": tool.input_schema
+        });
+        
+        tools_by_server
+            .entry(server_name.clone())
+            .or_default()
+            .push(tool_config);
+    }
+    
+    // Build server configurations
+    let mut servers_config = json!({});
+    
+    for (server_name, server_config) in servers.iter() {
+        let tools = tools_by_server.get(server_name).cloned().unwrap_or_default();
+        
+        servers_config[server_name] = json!({
+            "name": server_config.name,
+            "description": server_config.description,
+            "transport": server_config.transport,
+            "url": server_config.url,
+            "enabled": true,
+            "executionContext": server_config.execution_context,
+            "tools": tools
+        });
+    }
+    
+    let client_config = json!({
+        "servers": servers_config,
+        "metadata": {
+            "generated_at": Utc::now().to_rfc3339(),
+            "generator": "toolman",
+            "version": env!("CARGO_PKG_VERSION"),
+            "total_tools": available_tools.len(),
+            "total_servers": servers.len(),
+            "note": "All tools are disabled by default. Enable specific tools as needed."
+        }
+    });
+    
+    Ok(Json(client_config))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -2082,6 +2154,7 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/mcp", post(mcp_endpoint))
+        .route("/client-config", get(client_config_endpoint))
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
         .layer(CorsLayer::permissive())
