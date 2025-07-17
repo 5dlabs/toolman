@@ -31,6 +31,7 @@ podLabels: {}
 
 podSecurityContext:
   fsGroup: 1001
+  supplementalGroups: [2375]  # Add Docker group for Docker socket access
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -40,6 +41,7 @@ securityContext:
   readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1001
+  runAsGroup: 2375  # Add to Docker group for Docker socket access
 
 service:
   type: ClusterIP
@@ -74,7 +76,7 @@ livenessProbe:
   httpGet:
     path: /health
     port: http
-  initialDelaySeconds: 30
+  initialDelaySeconds: 45  # Give Docker daemon time to start
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
@@ -83,7 +85,7 @@ readinessProbe:
   httpGet:
     path: /ready
     port: http
-  initialDelaySeconds: 5
+  initialDelaySeconds: 30  # Give Docker daemon time to start
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 3
@@ -104,10 +106,10 @@ volumes:
     emptyDir: {}
   - name: npm-cache
     emptyDir: {}
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
-      type: Socket
+  - name: docker-sock-dir
+    emptyDir: {}
+  - name: docker-data
+    emptyDir: {}
 
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts:
@@ -118,8 +120,8 @@ volumeMounts:
     mountPath: /tmp
   - name: npm-cache
     mountPath: /home/mcp/.npm
-  - name: docker-sock
-    mountPath: /var/run/docker.sock
+  - name: docker-sock-dir
+    mountPath: /var/run
 
 nodeSelector: {}
 

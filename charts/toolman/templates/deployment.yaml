@@ -81,6 +81,26 @@ spec:
             - name: data
               mountPath: /data
             {{- end }}
+        # Docker-in-Docker sidecar for Docker-based MCP servers
+        - name: docker-daemon
+          image: docker:dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          volumeMounts:
+            - name: docker-sock-dir
+              mountPath: /var/run
+            - name: docker-data
+              mountPath: /var/lib/docker
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       volumes:
         {{- range .Values.volumes }}
         - name: {{ .name }}

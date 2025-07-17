@@ -190,6 +190,60 @@ impl ServerConnectionPool {
         }
     }
 
+    /// Check if Docker is available and ready
+    async fn is_docker_ready(&self) -> bool {
+        use tokio::process::Command;
+        
+        // Try to run docker version command
+        match Command::new("docker")
+            .arg("version")
+            .output()
+            .await
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    println!("✅ Docker is available and ready");
+                    true
+                } else {
+                    println!("❌ Docker command failed with status: {}", output.status);
+                    false
+                }
+            }
+            Err(e) => {
+                println!("❌ Docker command error: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Wait for Docker to be ready with timeout and retry logic
+    async fn wait_for_docker(&self, timeout_secs: u64) -> anyhow::Result<()> {
+        use tokio::time::{sleep, Duration, Instant};
+        
+        let start_time = Instant::now();
+        let timeout = Duration::from_secs(timeout_secs);
+        let retry_interval = Duration::from_secs(2);
+        
+        println!("🐳 Waiting for Docker to be ready (timeout: {}s)...", timeout_secs);
+        
+        loop {
+            if self.is_docker_ready().await {
+                println!("✅ Docker is ready (elapsed: {:?})", start_time.elapsed());
+                return Ok(());
+            }
+            
+            if start_time.elapsed() >= timeout {
+                return Err(anyhow::anyhow!(
+                    "Docker not ready after {} seconds. Docker-based MCP servers may not work.",
+                    timeout_secs
+                ));
+            }
+            
+            println!("⏳ Docker not ready yet, retrying in {}s...", retry_interval.as_secs());
+            sleep(retry_interval).await;
+        }
+    }
+
     /// Start an MCP server and establish a connection
     async fn start_server(&self, server_name: &str) -> anyhow::Result<()> {
         self.start_server_with_context(server_name, None).await
@@ -221,6 +275,15 @@ impl ServerConnectionPool {
         let config = servers.get_servers().get(server_name).ok_or_else(|| {
             anyhow::anyhow!("Server '{}' not found in configuration", server_name)
         })?;
+
+        // Check if this is a Docker-based server and ensure Docker is ready
+        if config.command == "docker" {
+            println!("🐳 [{}] Detected Docker-based server, checking Docker readiness...", server_name);
+            if let Err(e) = self.wait_for_docker(30).await {
+                println!("⚠️ [{}] Docker readiness check failed: {}", server_name, e);
+                // Continue anyway, but warn that it might not work
+            }
+        }
 
         println!("🚀 Starting MCP server: {}", server_name);
 
@@ -901,6 +964,15 @@ impl BridgeState {
                     "⚠️ [{}] Failed to check command existence: {}",
                     server_name, e
                 );
+            }
+        }
+
+        // Check if this is a Docker-based server and ensure Docker is ready
+        if config.command == "docker" {
+            println!("🐳 [{}] Detected Docker-based server, checking Docker readiness...", server_name);
+            if let Err(e) = self.connection_pool.wait_for_docker(30).await {
+                println!("⚠️ [{}] Docker readiness check failed: {}", server_name, e);
+                // Continue anyway, but warn that it might not work
             }
         }
 
