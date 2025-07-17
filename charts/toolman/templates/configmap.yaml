@@ -21,8 +21,16 @@ data:
           "description": {{ $serverConfig.description | quote }},
           {{- end }}
           "transport": {{ $serverConfig.transport | default "stdio" | quote }},
+          {{- if $serverConfig.command }}
           "command": {{ $serverConfig.command | quote }},
+          {{- else }}
+          "command": "",
+          {{- end }}
+          {{- if $serverConfig.args }}
           "args": {{ $serverConfig.args | toJson }},
+          {{- else }}
+          "args": [],
+          {{- end }}
           "enabled": {{ $serverConfig.enabled | default false }},
           {{- if hasKey $serverConfig "alwaysActive" }}
           "alwaysActive": {{ $serverConfig.alwaysActive }},
