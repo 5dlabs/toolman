@@ -987,39 +987,52 @@ impl BridgeState {
                 
                 println!("🎯 [{}] Final message_url: {}", server_name, message_url);
 
-                // Initialize the server
-                let init_request = json!({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {},
-                        "clientInfo": {
-                            "name": "toolman",
-                            "version": "1.0.0"
+                // For SSE endpoints, skip initialize due to short session timeouts
+                // Go directly to tools/list
+                let tools_request = if url.ends_with("/sse") {
+                    println!("🔄 [{}] SSE endpoint detected - skipping initialize due to session timeout issues", server_name);
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/list",
+                        "params": {}
+                    })
+                } else {
+                    println!("🔄 [{}] HTTP endpoint - sending initialize first", server_name);
+                    // Initialize the server for non-SSE endpoints
+                    let init_request = json!({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                            "clientInfo": {
+                                "name": "toolman",
+                                "version": "1.0.0"
+                            }
                         }
-                    }
-                });
+                    });
 
-                println!("📤 [{}] Sending initialize request to: {}", server_name, message_url);
-                let init_response = client
-                    .post(&message_url)
-                    .header("Accept", "application/json, text/event-stream")
-                    .json(&init_request)
-                    .send()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
-                
-                println!("📥 [{}] Initialize response status: {}", server_name, init_response.status());
+                    println!("📤 [{}] Sending initialize request to: {}", server_name, message_url);
+                    let init_response = client
+                        .post(&message_url)
+                        .header("Accept", "application/json, text/event-stream")
+                        .json(&init_request)
+                        .send()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
+                    
+                    println!("📥 [{}] Initialize response status: {}", server_name, init_response.status());
 
-                // Get tools list
-                let tools_request = json!({
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "method": "tools/list",
-                    "params": {}
-                });
+                    // Get tools list
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "tools/list",
+                        "params": {}
+                    })
+                };
 
                 println!("📤 [{}] Sending tools/list request to: {}", server_name, message_url);
                 let tools_response = client

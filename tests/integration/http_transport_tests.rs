@@ -117,79 +117,208 @@ async fn test_toolman_server_with_solana_config() {
 }
 
 #[tokio::test]
-async fn test_rustdocs_sse_via_toolman_server() {
-    // Test Rust Docs SSE transport via our actual toolman server
-    // This tests the real implementation path that's failing
+async fn test_rustdocs_sse_direct() {
+    // Test Rust Docs SSE transport directly - reproduce the exact production issue
+    println!("🧪 Testing Rust Docs SSE transport directly");
     
     let client = reqwest::Client::new();
+    let sse_url = "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/sse";
     
-    // Make a request to our toolman server's /mcp endpoint
-    // This will trigger the actual SSE tool discovery code path
-    let tools_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/list",
-        "params": {}
-    });
-
-    println!("Testing toolman server SSE implementation...");
-    
-    let result = timeout(Duration::from_secs(15), async {
+    // Step 1: Get session ID from SSE endpoint
+    println!("🔄 Step 1: Getting session ID from SSE endpoint");
+    let sse_result = timeout(Duration::from_secs(5), async {
         client
-            .post("http://toolman.mcp.svc.cluster.local:3000/mcp")
-            .json(&tools_request)
+            .get(sse_url)
+            .header("Accept", "text/event-stream")
             .send()
             .await
     });
-
-    match result.await {
+    
+    let session_id = match sse_result.await {
         Ok(Ok(response)) => {
-            println!("Toolman server response status: {}", response.status());
+            println!("✅ SSE endpoint response status: {}", response.status());
+            let content_type = response.headers().get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            println!("📋 Content-Type: {}", content_type);
             
-            if response.status().is_success() {
-                let response_text = response.text().await.unwrap_or_default();
-                println!("Response body: {}", response_text);
+            if content_type.contains("text/event-stream") {
+                // Read first chunk to get session info
+                use futures::StreamExt;
+                let mut body = response.bytes_stream();
                 
-                // Try to parse as JSON to see if it's valid MCP response
-                if let Ok(json_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
-                    if let Some(tools) = json_response.get("result").and_then(|r| r.get("tools")) {
-                        println!("Successfully got tools response with {} tools", 
-                                tools.as_array().map(|a| a.len()).unwrap_or(0));
-                        
-                        // Check if rustdocs tools are included
-                        if let Some(tools_array) = tools.as_array() {
-                            let has_rustdocs = tools_array.iter().any(|tool| {
-                                tool.get("name")
-                                    .and_then(|n| n.as_str())
-                                    .map(|name| name.contains("rust") || name.contains("doc"))
-                                    .unwrap_or(false)
-                            });
-                            
-                            if has_rustdocs {
-                                println!("✅ Rust Docs tools found in response");
-                            } else {
-                                println!("❌ No Rust Docs tools found - SSE discovery may have failed");
-                            }
-                        }
+                let first_chunk = match timeout(Duration::from_secs(3), body.next()).await {
+                    Ok(Some(Ok(chunk))) => String::from_utf8_lossy(&chunk).to_string(),
+                    Ok(Some(Err(e))) => {
+                        println!("❌ Failed to read SSE chunk: {}", e);
+                        return;
+                    }
+                    Ok(None) => {
+                        println!("❌ No data received from SSE endpoint");
+                        return;
+                    }
+                    Err(_) => {
+                        println!("❌ Timeout reading SSE chunk");
+                        return;
+                    }
+                };
+                
+                println!("📦 First SSE chunk: {}", first_chunk);
+                
+                // Parse session ID from SSE format
+                if let Some(data_line) = first_chunk.lines().find(|line| line.starts_with("data: ")) {
+                    let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                    if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                        let session_id = session_param.to_string();
+                        println!("✅ Extracted session ID: {}", session_id);
+                        session_id
                     } else {
-                        println!("❌ Invalid tools response format");
+                        println!("❌ No sessionId found in SSE response");
+                        return;
                     }
                 } else {
-                    println!("❌ Failed to parse response as JSON: {}", response_text);
+                    println!("❌ No data line found in SSE response");
+                    return;
                 }
             } else {
-                println!("❌ Server returned error status: {}", response.status());
+                println!("❌ Not an SSE endpoint, content-type: {}", content_type);
+                return;
             }
         }
         Ok(Err(e)) => {
-            println!("❌ Request failed: {}", e);
+            println!("❌ SSE request failed: {}", e);
+            return;
         }
         Err(_) => {
-            println!("❌ Request timed out");
+            println!("❌ SSE request timed out");
+            return;
+        }
+    };
+    
+    // Step 2: Test initialize request to message endpoint
+    println!("🔄 Step 2: Testing initialize request");
+    let base_url = sse_url.trim_end_matches("/sse").trim_end_matches('/');
+    let message_url = format!("{}/message?sessionId={}", base_url, session_id);
+    println!("📤 Message URL: {}", message_url);
+    
+    let init_request = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "roots": {
+                    "listChanged": true
+                },
+                "sampling": {}
+            },
+            "clientInfo": {
+                "name": "toolman-test",
+                "version": "1.0.0"
+            }
+        }
+    });
+    
+    println!("📤 Sending initialize request with 10s timeout...");
+    let init_result = timeout(Duration::from_secs(10), async {
+        client
+            .post(&message_url)
+            .header("Accept", "application/json, text/event-stream")
+            .header("Content-Type", "application/json")
+            .json(&init_request)
+            .send()
+            .await
+    });
+    
+    match init_result.await {
+        Ok(Ok(response)) => {
+            println!("✅ Initialize response status: {}", response.status());
+            let response_text = response.text().await.unwrap_or_default();
+            println!("📦 Initialize response (first 500 chars): {}", 
+                    response_text.chars().take(500).collect::<String>());
+            
+            // Step 3: Test tools/list request  
+            println!("🔄 Step 3: Testing tools/list request");
+            let tools_request = json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {}
+            });
+            
+            let tools_result = timeout(Duration::from_secs(10), async {
+                client
+                    .post(&message_url)
+                    .header("Accept", "application/json, text/event-stream")
+                    .header("Content-Type", "application/json")
+                    .json(&tools_request)
+                    .send()
+                    .await
+            });
+            
+            match tools_result.await {
+                Ok(Ok(tools_response)) => {
+                    println!("✅ Tools response status: {}", tools_response.status());
+                    let tools_text = tools_response.text().await.unwrap_or_default();
+                    println!("📦 Tools response (first 500 chars): {}", 
+                            tools_text.chars().take(500).collect::<String>());
+                    
+                    // Try to parse as JSON or SSE format
+                    if tools_text.contains("data: ") {
+                        println!("🔄 Detected SSE format in tools response");
+                        // Extract JSON from SSE format
+                        let data_lines: Vec<&str> = tools_text
+                            .lines()
+                            .filter(|line| line.starts_with("data: "))
+                            .collect();
+                        
+                        if !data_lines.is_empty() {
+                            let combined_data = data_lines
+                                .iter()
+                                .map(|line| line.strip_prefix("data: ").unwrap_or(line))
+                                .collect::<Vec<_>>()
+                                .join("");
+                            println!("🔍 Extracted JSON: {}", combined_data);
+                            
+                            if let Ok(json_response) = serde_json::from_str::<serde_json::Value>(&combined_data) {
+                                if let Some(tools) = json_response.get("result").and_then(|r| r.get("tools")) {
+                                    println!("✅ Successfully parsed {} tools", 
+                                            tools.as_array().map(|a| a.len()).unwrap_or(0));
+                                } else {
+                                    println!("❌ No tools found in JSON response");
+                                }
+                            } else {
+                                println!("❌ Failed to parse extracted JSON");
+                            }
+                        }
+                    } else if let Ok(json_response) = serde_json::from_str::<serde_json::Value>(&tools_text) {
+                        println!("✅ Direct JSON response");
+                        if let Some(tools) = json_response.get("result").and_then(|r| r.get("tools")) {
+                            println!("✅ Successfully parsed {} tools", 
+                                    tools.as_array().map(|a| a.len()).unwrap_or(0));
+                        }
+                    } else {
+                        println!("❌ Could not parse tools response as JSON or SSE");
+                    }
+                }
+                Ok(Err(e)) => {
+                    println!("❌ Tools request failed: {}", e);
+                }
+                Err(_) => {
+                    println!("❌ Tools request timed out");
+                }
+            }
+        }
+        Ok(Err(e)) => {
+            println!("❌ Initialize request failed: {}", e);
+        }
+        Err(_) => {
+            println!("❌ Initialize request timed out - this is likely the production issue!");
         }
     }
     
-    println!("SSE integration test via toolman server completed");
+    println!("🏁 Rust Docs SSE direct test completed");
 }
 
 #[tokio::test]
