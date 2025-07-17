@@ -1022,7 +1022,10 @@ impl BridgeState {
                         "params": {}
                     })
                 } else {
-                    println!("🔄 [{}] HTTP endpoint - sending initialize first", server_name);
+                    println!(
+                        "🔄 [{}] HTTP endpoint - sending initialize first",
+                        server_name
+                    );
                     // Initialize the server for non-SSE endpoints
                     let init_request = json!({
                         "jsonrpc": "2.0",
@@ -1038,23 +1041,23 @@ impl BridgeState {
                         }
                     });
 
-                println!(
-                    "📤 [{}] Sending initialize request to: {}",
-                    server_name, message_url
-                );
-                let init_response = client
-                    .post(&message_url)
-                    .header("Accept", "application/json, text/event-stream")
-                    .json(&init_request)
-                    .send()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
+                    println!(
+                        "📤 [{}] Sending initialize request to: {}",
+                        server_name, message_url
+                    );
+                    let init_response = client
+                        .post(&message_url)
+                        .header("Accept", "application/json, text/event-stream")
+                        .json(&init_request)
+                        .send()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("HTTP init request failed: {}", e))?;
 
-                println!(
-                    "📥 [{}] Initialize response status: {}",
-                    server_name,
-                    init_response.status()
-                );
+                    println!(
+                        "📥 [{}] Initialize response status: {}",
+                        server_name,
+                        init_response.status()
+                    );
 
                     // Get tools list
                     json!({
