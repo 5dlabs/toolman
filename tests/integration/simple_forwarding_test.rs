@@ -1,7 +1,6 @@
 /// Simple integration test to verify tool forwarding works end-to-end
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::time::Duration;
 
 /// A minimal test that verifies our HTTP server can forward tool calls
 #[tokio::test]
@@ -75,7 +74,6 @@ async fn test_simple_tool_forwarding() -> Result<()> {
     println!("   - Tool name parsing ✅");
     println!("   - JSON-RPC structure ✅");
     println!("   - Configuration loading ✅");
-    println!("");
     println!("💡 This test validates the core logic that enables tool forwarding.");
     println!("   The HTTP server integration builds on these foundations.");
 
