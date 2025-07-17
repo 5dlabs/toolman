@@ -26,9 +26,9 @@ pub mod session_store;
 pub use config::{
     ClientInfo, ExecutionContext, ServerConfig, SessionConfig, SessionSettings, SystemConfigManager,
 };
+pub use context::{ContextConfig, ContextManager};
 pub use session::{SessionContext, SessionInitRequest, SessionInitResponse, ToolSource};
 pub use session_store::SessionStore;
-pub use context::{ContextConfig, ContextManager};
 pub use stdio_wrapper::StdioWrapper;
 
 // Tool suggester module

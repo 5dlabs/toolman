@@ -21,9 +21,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use toolman::config::{ServerConfig, SessionConfig, SystemConfigManager as ConfigManager};
 use toolman::resolve_working_directory;
-use toolman::tool_suggester::ToolSuggester;
 use toolman::session::{SessionInitRequest, SessionInitResponse, ToolSource};
 use toolman::session_store::SessionStore;
+use toolman::tool_suggester::ToolSuggester;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
@@ -695,9 +695,11 @@ impl BridgeState {
 
         let system_config_manager = Arc::new(RwLock::new(system_config_manager_instance));
         let connection_pool = Arc::new(ServerConnectionPool::new(system_config_manager.clone()));
-        
+
         // Create session store with global config (placeholder for now)
-        let global_config = Arc::new(toolman::config::ServersConfig { servers: HashMap::new() });
+        let global_config = Arc::new(toolman::config::ServersConfig {
+            servers: HashMap::new(),
+        });
         let session_store = Arc::new(SessionStore::new(global_config));
 
         // Create the state
@@ -1809,8 +1811,11 @@ impl BridgeState {
         request: JsonRpcRequest,
         session_id: &str,
     ) -> JsonRpcResponse {
-        println!("🔄 Processing session-based request: {} for session {}", request.method, session_id);
-        
+        println!(
+            "🔄 Processing session-based request: {} for session {}",
+            request.method, session_id
+        );
+
         // Get session context
         let session = match self.session_store.get_session(session_id) {
             Ok(Some(session)) => session,
@@ -1850,17 +1855,28 @@ impl BridgeState {
                         // Look up tool source in session configuration
                         if let Some(tool_source) = session.get_tool_source(tool_name) {
                             let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
-                            
-                            println!("🔧 Routing tool '{}' via source: {}", tool_name, tool_source.to_string());
-                            
+
+                            println!(
+                                "🔧 Routing tool '{}' via source: {}",
+                                tool_name,
+                                tool_source.to_string()
+                            );
+
                             let result = match tool_source {
                                 toolman::session::ToolSource::Local(server_name) => {
                                     // Route to local server
-                                    self.route_to_local_server(server_name, tool_name, arguments, &session).await
+                                    self.route_to_local_server(
+                                        server_name,
+                                        tool_name,
+                                        arguments,
+                                        &session,
+                                    )
+                                    .await
                                 }
                                 toolman::session::ToolSource::Global(server_name) => {
                                     // Route to global server
-                                    self.route_to_global_server(server_name, tool_name, arguments).await
+                                    self.route_to_global_server(server_name, tool_name, arguments)
+                                        .await
                                 }
                             };
 
@@ -1877,7 +1893,10 @@ impl BridgeState {
                                 result: None,
                                 error: Some(JsonRpcError {
                                     code: -32602,
-                                    message: format!("Tool '{}' not available in session configuration", tool_name),
+                                    message: format!(
+                                        "Tool '{}' not available in session configuration",
+                                        tool_name
+                                    ),
                                 }),
                             }
                         }
@@ -1907,15 +1926,19 @@ impl BridgeState {
             "tools/list" => {
                 // Return tools aggregated from both local and global servers
                 let mut available_tools = Vec::new();
-                
+
                 // Add tools from spawned local servers (actual discovered tools)
                 for (server_name, server_info) in &session.spawned_servers {
                     for tool_name in &server_info.tools {
                         // Only include if this tool was requested in the session
-                        if session.requested_tools.iter().any(|req| req.name == *tool_name) {
+                        if session
+                            .requested_tools
+                            .iter()
+                            .any(|req| req.name == *tool_name)
+                        {
                             available_tools.push(json!({
                                 "name": tool_name,
-                                "description": format!("Local tool from {} server (PID: {})", 
+                                "description": format!("Local tool from {} server (PID: {})",
                                     server_name,
                                     server_info.process_info.as_ref().map(|p| p.pid).unwrap_or(0)
                                 ),
@@ -1931,10 +1954,11 @@ impl BridgeState {
                         }
                     }
                 }
-                
+
                 // Add global tools (from session requests)
                 for tool_request in &session.requested_tools {
-                    if let toolman::session::ToolSource::Global(server_name) = &tool_request.source {
+                    if let toolman::session::ToolSource::Global(server_name) = &tool_request.source
+                    {
                         available_tools.push(json!({
                             "name": tool_request.name,
                             "description": format!("Global tool from {} server", server_name),
@@ -1967,20 +1991,27 @@ impl BridgeState {
         arguments: Value,
         session: &toolman::session::SessionContext,
     ) -> Value {
-        println!("📡 Routing to local server '{}' for tool '{}'", server_name, tool_name);
-        
+        println!(
+            "📡 Routing to local server '{}' for tool '{}'",
+            server_name, tool_name
+        );
+
         // Check if local server is spawned and ready
         if let Some(server_info) = session.spawned_servers.get(server_name) {
             match server_info.status {
                 toolman::session::ServerStatus::Running => {
                     // Try to communicate with the local server using the existing connection pool
                     // This leverages the existing MCP communication logic but with session-specific working directory
-                    match self.connection_pool.forward_tool_call_with_context(
-                        server_name,
-                        tool_name,
-                        arguments.clone(),
-                        server_info.working_directory.as_deref(),
-                    ).await {
+                    match self
+                        .connection_pool
+                        .forward_tool_call_with_context(
+                            server_name,
+                            tool_name,
+                            arguments.clone(),
+                            server_info.working_directory.as_deref(),
+                        )
+                        .await
+                    {
                         Ok(response) => {
                             // Extract result from response
                             if let Some(result) = response.get("result") {
@@ -1992,14 +2023,17 @@ impl BridgeState {
                         Err(e) => {
                             // If the existing connection pool doesn't work, it might be because
                             // we need to establish communication with our spawned process
-                            println!("⚠️ Connection pool failed for local server '{}': {}", server_name, e);
+                            println!(
+                                "⚠️ Connection pool failed for local server '{}': {}",
+                                server_name, e
+                            );
                             json!({
                                 "content": [{
                                     "type": "text",
-                                    "text": format!("✅ Local server '{}' (PID: {}) received tool '{}' with args: {}\n\n⚠️ Note: Direct process communication not yet implemented, using connection pool fallback.", 
-                                        server_name, 
+                                    "text": format!("✅ Local server '{}' (PID: {}) received tool '{}' with args: {}\n\n⚠️ Note: Direct process communication not yet implemented, using connection pool fallback.",
+                                        server_name,
                                         server_info.process_info.as_ref().map(|p| p.pid).unwrap_or(0),
-                                        tool_name, 
+                                        tool_name,
                                         arguments)
                                 }]
                             })
@@ -2048,15 +2082,22 @@ impl BridgeState {
         tool_name: &str,
         arguments: Value,
     ) -> Value {
-        println!("🌐 Routing to global server '{}' for tool '{}'", server_name, tool_name);
-        
+        println!(
+            "🌐 Routing to global server '{}' for tool '{}'",
+            server_name, tool_name
+        );
+
         // Use existing connection pool to forward to global server
-        match self.connection_pool.forward_tool_call_with_context(
-            server_name,
-            tool_name,
-            arguments,
-            None, // No working directory for global servers
-        ).await {
+        match self
+            .connection_pool
+            .forward_tool_call_with_context(
+                server_name,
+                tool_name,
+                arguments,
+                None, // No working directory for global servers
+            )
+            .await
+        {
             Ok(response) => {
                 // Extract result from response
                 if let Some(result) = response.get("result") {
@@ -2111,8 +2152,11 @@ async fn session_init(
     State(state): State<BridgeState>,
     Json(request): Json<SessionInitRequest>,
 ) -> Result<Json<SessionInitResponse>, (StatusCode, Json<Value>)> {
-    println!("🔄 Creating new session for client: {}", request.client_info.name);
-    
+    println!(
+        "🔄 Creating new session for client: {}",
+        request.client_info.name
+    );
+
     match state.session_store.create_session(request).await {
         Ok(response) => {
             println!("✅ Session created: {}", response.session_id);
@@ -2125,7 +2169,7 @@ async fn session_init(
                 Json(json!({
                     "error": "Failed to create session",
                     "details": e
-                }))
+                })),
             ))
         }
     }
@@ -2137,7 +2181,7 @@ async fn session_destroy(
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     println!("🗑️  Destroying session: {}", session_id);
-    
+
     match state.session_store.remove_session(&session_id).await {
         Ok(removed) => {
             if removed {
@@ -2152,7 +2196,7 @@ async fn session_destroy(
                     Json(json!({
                         "error": "Session not found",
                         "session_id": session_id
-                    }))
+                    })),
                 ))
             }
         }
@@ -2163,53 +2207,66 @@ async fn session_destroy(
                 Json(json!({
                     "error": "Failed to destroy session",
                     "details": e
-                }))
+                })),
             ))
         }
     }
 }
 
-// Session tools list endpoint  
+// Session tools list endpoint
 async fn session_tools_list(
     State(state): State<BridgeState>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     println!("🔍 Getting tools list for session: {}", session_id);
-    
+
     // Update session access time
     if let Err(e) = state.session_store.update_session_access(&session_id) {
         println!("⚠️ Failed to update session access time: {}", e);
     }
-    
+
     // Get session and build available tools
     match state.session_store.get_session(&session_id) {
         Ok(Some(_session)) => {
             // Build available tools for this session
-            let available_tools = state.session_store.get_available_tools_for_session(&session_id).await
+            let available_tools = state
+                .session_store
+                .get_available_tools_for_session(&session_id)
+                .await
                 .unwrap_or_else(|_| Vec::new());
-            
-            println!("✅ Found session: {} with {} available tools", session_id, available_tools.len());
-            
+
+            println!(
+                "✅ Found session: {} with {} available tools",
+                session_id,
+                available_tools.len()
+            );
+
             // Build tools response in MCP format
-            let tools: Vec<Value> = available_tools.iter().map(|tool| {
-                json!({
-                    "name": tool.name,
-                    "description": format!("Tool from {}", tool.source),
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
+            let tools: Vec<Value> = available_tools
+                .iter()
+                .map(|tool| {
+                    json!({
+                        "name": tool.name,
+                        "description": format!("Tool from {}", tool.source),
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    })
                 })
-            }).collect();
-            
+                .collect();
+
             Ok(Json(json!({
                 "tools": tools
             })))
         }
         Ok(None) => {
             println!("⚠️ Session not found: {}", session_id);
-            Err((StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))))
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Session not found"})),
+            ))
         }
         Err(e) => {
             println!("❌ Failed to get session {}: {}", session_id, e);
@@ -2218,55 +2275,69 @@ async fn session_tools_list(
     }
 }
 
-// Session tools call endpoint  
+// Session tools call endpoint
 async fn session_tools_call(
     State(state): State<BridgeState>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     println!("🔧 Executing tool call for session: {}", session_id);
-    
+
     // Update session access time
     if let Err(e) = state.session_store.update_session_access(&session_id) {
         println!("⚠️ Failed to update session access time: {}", e);
     }
-    
+
     // Parse the tool call request
-    let tool_name = body.get("name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            println!("❌ Missing tool name in request");
-            (StatusCode::BAD_REQUEST, Json(json!({"error": "Missing tool name"})))
-        })?;
-    
+    let tool_name = body.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
+        println!("❌ Missing tool name in request");
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Missing tool name"})),
+        )
+    })?;
+
     let default_args = json!({});
-    let tool_arguments = body.get("arguments")
-        .unwrap_or(&default_args);
-    
+    let tool_arguments = body.get("arguments").unwrap_or(&default_args);
+
     println!("🔧 Tool call: {} with args: {}", tool_name, tool_arguments);
-    
+
     // Get session to determine tool source
     let session = match state.session_store.get_session(&session_id) {
         Ok(Some(session)) => session,
         Ok(None) => {
             println!("⚠️ Session not found: {}", session_id);
-            return Err((StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))));
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Session not found"})),
+            ));
         }
         Err(e) => {
             println!("❌ Failed to get session {}: {}", session_id, e);
             return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))));
         }
     };
-    
+
     // Find the tool in the session's requested tools to determine source
-    let tool_source = session.requested_tools.iter()
+    let tool_source = session
+        .requested_tools
+        .iter()
         .find(|req| req.name == tool_name)
         .map(|req| &req.source);
-    
+
     match tool_source {
         Some(ToolSource::Local(server_name)) => {
             println!("🏠 Routing tool call to local server: {}", server_name);
-            match state.session_store.execute_tool_on_local_server(&session_id, server_name, tool_name, tool_arguments.clone()).await {
+            match state
+                .session_store
+                .execute_tool_on_local_server(
+                    &session_id,
+                    server_name,
+                    tool_name,
+                    tool_arguments.clone(),
+                )
+                .await
+            {
                 Ok(result) => {
                     println!("✅ Local tool execution successful");
                     Ok(Json(result))
@@ -2280,11 +2351,22 @@ async fn session_tools_call(
         Some(ToolSource::Global(server_name)) => {
             println!("🌍 Routing tool call to global server: {}", server_name);
             // For now, return not implemented for global servers
-            Err((StatusCode::NOT_IMPLEMENTED, Json(json!({"error": "Global server tool execution not yet implemented"}))))
+            Err((
+                StatusCode::NOT_IMPLEMENTED,
+                Json(json!({"error": "Global server tool execution not yet implemented"})),
+            ))
         }
         None => {
-            println!("❌ Tool {} not found in session's requested tools", tool_name);
-            Err((StatusCode::NOT_FOUND, Json(json!({"error": format!("Tool '{}' not available in this session", tool_name)}))))
+            println!(
+                "❌ Tool {} not found in session's requested tools",
+                tool_name
+            );
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(
+                    json!({"error": format!("Tool '{}' not available in this session", tool_name)}),
+                ),
+            ))
         }
     }
 }
@@ -2309,7 +2391,7 @@ async fn mcp_endpoint(
 
     if let Ok(request) = serde_json::from_value::<JsonRpcRequest>(body) {
         eprintln!("📨 DEBUG: Request method: {}", request.method);
-        
+
         // If we have a session ID, use session-based routing
         if let Some(session_id) = session_id {
             eprintln!("🔄 Using session-based routing for session: {}", session_id);
@@ -2442,7 +2524,10 @@ async fn main() -> Result<()> {
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
         .route("/session/init", post(session_init))
-        .route("/session/:session_id", axum::routing::delete(session_destroy))
+        .route(
+            "/session/:session_id",
+            axum::routing::delete(session_destroy),
+        )
         .route("/session/:session_id/tools/list", get(session_tools_list))
         .route("/session/:session_id/tools/call", post(session_tools_call))
         .layer(CorsLayer::permissive())

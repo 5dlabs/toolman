@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,7 +127,7 @@ impl SessionContext {
     pub fn new(request: SessionInitRequest) -> Self {
         let session_id = Uuid::new_v4().to_string();
         let now = SystemTime::now();
-        
+
         Self {
             session_id,
             client_info: request.client_info,
@@ -139,15 +139,15 @@ impl SessionContext {
             last_accessed: now,
         }
     }
-    
+
     pub fn update_last_accessed(&mut self) {
         self.last_accessed = SystemTime::now();
     }
-    
+
     pub fn add_spawned_server(&mut self, name: String, info: SpawnedServerInfo) {
         self.spawned_servers.insert(name, info);
     }
-    
+
     pub fn get_tool_source(&self, tool_name: &str) -> Option<&ToolSource> {
         self.requested_tools
             .iter()
@@ -168,7 +168,7 @@ impl ToolSource {
             Err("Tool source must be in format 'context:server'".to_string())
         }
     }
-    
+
     #[allow(clippy::inherent_to_string)] // TODO: Implement Display trait instead
     pub fn to_string(&self) -> String {
         match self {
