@@ -297,6 +297,15 @@ impl McpClient {
 
         for (server_name, process) in servers.iter() {
             for tool in &process.tools {
+                if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
+                    // Apply the same filtering logic as remote tools
+                    let enabled = self.should_include_tool(name, true);
+                    if !enabled {
+                        eprintln!("[Bridge] Filtering out local tool: {name}");
+                        continue;
+                    }
+                }
+                
                 let mut tool_with_source = tool.clone();
                 tool_with_source["_source"] = json!(format!("local:{}", server_name));
                 all_tools.push(tool_with_source);
