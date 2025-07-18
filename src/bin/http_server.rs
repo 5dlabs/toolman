@@ -628,14 +628,15 @@ impl ServerConnectionPool {
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to read HTTP response: {}", e))?;
 
-                    // Check if response is SSE format (like Solana) 
+                    // Check if response is SSE format (like Solana)
                     let response_json: Value = if response_text.starts_with("event:") {
                         // SSE format: extract JSON from "data:" line
                         println!("📡 [{}] Detected SSE response format", server_name);
                         for line in response_text.lines() {
                             if let Some(data) = line.strip_prefix("data: ") {
-                                return serde_json::from_str(data)
-                                    .map_err(|e| anyhow::anyhow!("Failed to parse SSE data as JSON: {}", e));
+                                return serde_json::from_str(data).map_err(|e| {
+                                    anyhow::anyhow!("Failed to parse SSE data as JSON: {}", e)
+                                });
                             }
                         }
                         return Err(anyhow::anyhow!("No data line found in SSE response"));

@@ -294,7 +294,7 @@ impl McpClient {
         let servers = self.local_servers.lock().await;
 
         let mut all_tools = Vec::new();
-        
+
         for (server_name, process) in servers.iter() {
             for tool in &process.tools {
                 let mut tool_with_source = tool.clone();
