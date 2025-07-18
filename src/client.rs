@@ -305,7 +305,7 @@ impl McpClient {
                         continue;
                     }
                 }
-                
+
                 let mut tool_with_source = tool.clone();
                 tool_with_source["_source"] = json!(format!("local:{}", server_name));
                 all_tools.push(tool_with_source);
