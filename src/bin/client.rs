@@ -40,11 +40,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Determine HTTP base URL with priority: positional arg > flag > env var > default
-    let http_base_url = args.http_url
+    let http_base_url = args
+        .http_url
         .or(args.url)
         .or_else(|| std::env::var("TOOLMAN_SERVER_URL").ok())
         .unwrap_or_else(|| "http://toolman.mcp.svc.cluster.local:3000/mcp".to_string());
-    
+
     let working_dir = args.pos_working_dir.or(args.working_dir);
 
     let client = McpClient::new(http_base_url, working_dir)?;
