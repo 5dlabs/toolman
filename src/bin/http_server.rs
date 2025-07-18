@@ -616,17 +616,35 @@ impl ServerConnectionPool {
                     // Send HTTP POST request with proper Accept headers
                     let response = client
                         .post(url)
-                        .header("Accept", "application/json, text/event-stream")
+                        .header("Accept", "application/json,text/event-stream")
                         .json(&request_body)
                         .send()
                         .await
                         .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
 
-                    // Parse response
-                    let response_json: Value = response
-                        .json()
+                    // Parse response - handle both JSON and SSE formats
+                    let response_text = response
+                        .text()
                         .await
-                        .map_err(|e| anyhow::anyhow!("Failed to parse HTTP response: {}", e))?;
+                        .map_err(|e| anyhow::anyhow!("Failed to read HTTP response: {}", e))?;
+
+                    // Check if response is SSE format (like Solana) 
+                    let response_json: Value = if response_text.starts_with("event:") {
+                        // SSE format: extract JSON from "data:" line
+                        println!("📡 [{}] Detected SSE response format", server_name);
+                        for line in response_text.lines() {
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                return serde_json::from_str(data)
+                                    .map_err(|e| anyhow::anyhow!("Failed to parse SSE data as JSON: {}", e));
+                            }
+                        }
+                        return Err(anyhow::anyhow!("No data line found in SSE response"));
+                    } else {
+                        // Direct JSON format
+                        println!("📡 [{}] Detected JSON response format", server_name);
+                        serde_json::from_str(&response_text)
+                            .map_err(|e| anyhow::anyhow!("Failed to parse JSON response: {}", e))?
+                    };
 
                     println!("📨 Received HTTP response from server {}", server_name);
                     return Ok(response_json);
@@ -985,7 +1003,7 @@ impl BridgeState {
                 );
                 let init_response = client
                     .post(&message_url)
-                    .header("Accept", "application/json, text/event-stream")
+                    .header("Accept", "application/json,text/event-stream")
                     .json(&init_request)
                     .send()
                     .await
@@ -1011,7 +1029,7 @@ impl BridgeState {
                 );
                 let tools_response = client
                     .post(&message_url)
-                    .header("Accept", "application/json, text/event-stream")
+                    .header("Accept", "application/json,text/event-stream")
                     .json(&tools_request)
                     .send()
                     .await

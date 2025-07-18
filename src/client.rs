@@ -22,6 +22,7 @@ pub struct LocalServerProcess {
     pub started_at: std::time::SystemTime,
     pub stdin: Option<tokio::process::ChildStdin>,
     pub stdout: Option<BufReader<tokio::process::ChildStdout>>,
+    pub tools: Vec<Value>, // Store actual tool schemas from MCP handshake
 }
 
 pub struct McpClient {
@@ -253,8 +254,8 @@ impl McpClient {
                     // Apply client-side filtering based on new configuration
                     let filtered_remote_tools = self.filter_remote_tools(tools_vec);
 
-                    // Get local tools from configuration
-                    let local_tools = self.get_local_tools();
+                    // Get local tools from MCP handshake results
+                    let local_tools = self.get_local_tools().await;
 
                     // Combine remote and local tools
                     let mut all_tools = filtered_remote_tools;
@@ -288,31 +289,21 @@ impl McpClient {
             .collect()
     }
 
-    /// Get local tools from the client configuration
-    fn get_local_tools(&self) -> Vec<Value> {
-        if let Some(ref config) = self.client_config {
-            config
-                .local_servers
-                .iter()
-                .flat_map(|(server_name, server_config)| {
-                    let server_name = server_name.clone();
-                    server_config.tools.iter().map(move |tool_name| {
-                        json!({
-                            "name": tool_name,
-                            "description": format!("Local tool from {} server", server_name),
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {},
-                                "required": []
-                            },
-                            "_source": format!("local:{}", server_name)
-                        })
-                    })
-                })
-                .collect()
-        } else {
-            vec![]
+    /// Get local tools from actual MCP handshake results
+    async fn get_local_tools(&self) -> Vec<Value> {
+        let servers = self.local_servers.lock().await;
+
+        let mut all_tools = Vec::new();
+        
+        for (server_name, process) in servers.iter() {
+            for tool in &process.tools {
+                let mut tool_with_source = tool.clone();
+                tool_with_source["_source"] = json!(format!("local:{}", server_name));
+                all_tools.push(tool_with_source);
+            }
         }
+
+        all_tools
     }
 
     fn apply_cursor_compatibility(&self, tools: Vec<Value>) -> Vec<Value> {
@@ -580,6 +571,7 @@ impl McpClient {
             started_at,
             stdin,
             stdout,
+            tools: Vec::new(), // Initialize empty, will be populated during handshake
         };
 
         // Store the process
@@ -651,7 +643,7 @@ impl McpClient {
     }
 
     /// Execute MCP handshake with a local server
-    async fn perform_mcp_handshake(&self, server_name: &str) -> Result<Vec<String>> {
+    async fn perform_mcp_handshake(&self, server_name: &str) -> Result<Vec<Value>> {
         let mut servers = self.local_servers.lock().await;
 
         if let Some(process) = servers.get_mut(server_name) {
@@ -835,29 +827,35 @@ impl McpClient {
                 ));
             }
 
-            // Extract tool names from response
-            let mut tool_names = Vec::new();
+            // Extract full tool schemas from response
+            let mut tool_schemas = Vec::new();
             if let Some(result) = tools_response.get("result") {
                 if let Some(tools) = result.get("tools") {
                     if let Some(tools_array) = tools.as_array() {
                         for tool in tools_array {
-                            if let Some(name) = tool.get("name") {
-                                if let Some(name_str) = name.as_str() {
-                                    tool_names.push(name_str.to_string());
-                                }
+                            if tool.get("name").is_some() {
+                                tool_schemas.push(tool.clone());
                             }
                         }
                     }
                 }
             }
 
+            // Store the tool schemas in the LocalServerProcess
+            process.tools = tool_schemas.clone();
+
+            let tool_names: Vec<String> = tool_schemas
+                .iter()
+                .filter_map(|tool| tool.get("name")?.as_str().map(|s| s.to_string()))
+                .collect();
+
             eprintln!(
                 "[Bridge] ✅ MCP handshake successful with {}: {} tools discovered",
                 server_name,
-                tool_names.len()
+                tool_schemas.len()
             );
             eprintln!("[Bridge] 🔍 Discovered tools: {:?}", tool_names);
-            Ok(tool_names)
+            Ok(tool_schemas)
         } else {
             Err(anyhow::anyhow!("Local server '{}' not found", server_name))
         }
