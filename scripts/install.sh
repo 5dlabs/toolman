@@ -545,17 +545,18 @@ main() {
     if [[ -f "$dest_cli_path" ]] && [[ "$FORCE" != true ]]; then
         # Try to get current version
         local current_version=""
-        if current_version=$("$dest_cli_path" --version 2>/dev/null | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1); then
-            if [[ "$current_version" == "v$VERSION" ]]; then
+        if current_version=$("$dest_cli_path" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1); then
+            if [[ "$current_version" == "$VERSION" ]]; then
                 print_info "Toolman v$VERSION is already installed at $dest_cli_path"
                 exit 0
             else
-                print_info "Upgrading Toolman from $current_version to v$VERSION"
+                print_info "Upgrading Toolman from v$current_version to v$VERSION"
+                # Continue with installation
             fi
         else
-            print_warning "Toolman is already installed at $dest_cli_path"
-            print_info "Use --force to reinstall or --help for options"
-            exit 0
+            # Version detection failed - assume upgrade needed
+            print_info "Upgrading Toolman to v$VERSION (current version unknown)"
+            # Continue with installation
         fi
     fi
 

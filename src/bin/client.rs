@@ -9,6 +9,7 @@ use toolman::client::McpClient;
 #[derive(Parser)]
 #[command(name = "toolman-client")]
 #[command(about = "Toolman MCP Client - client-side MCP implementation with local/remote routing")]
+#[command(version)]
 struct Args {
     /// HTTP server URL to connect to for remote tools
     ///
