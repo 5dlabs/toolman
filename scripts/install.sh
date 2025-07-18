@@ -541,11 +541,22 @@ main() {
     temp_dir=$(mktemp -d)
     local temp_archive="$temp_dir/$archive_name"
 
-    # Check if already installed
+    # Check if already installed and handle upgrades
     if [[ -f "$dest_cli_path" ]] && [[ "$FORCE" != true ]]; then
-        print_warning "MCP proxy already installed at $dest_cli_path"
-        echo "Use --force to reinstall or --help for options"
-        exit 0
+        # Try to get current version
+        local current_version=""
+        if current_version=$("$dest_cli_path" --version 2>/dev/null | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1); then
+            if [[ "$current_version" == "v$VERSION" ]]; then
+                print_info "Toolman v$VERSION is already installed at $dest_cli_path"
+                exit 0
+            else
+                print_info "Upgrading Toolman from $current_version to v$VERSION"
+            fi
+        else
+            print_warning "Toolman is already installed at $dest_cli_path"
+            print_info "Use --force to reinstall or --help for options"
+            exit 0
+        fi
     fi
 
     # Create installation directory
