@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "toolman": {
+      "command": "toolman-client",
+      "args": [],
+      "env": {
+        "TOOLMAN_SERVER_URL": "http://toolman.mcp.svc.cluster.local:3000/mcp"
+      }
+    }
+  }
+}
