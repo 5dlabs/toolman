@@ -745,18 +745,23 @@ impl BridgeState {
 
         for (server_name, config) in server_list {
             println!("🔍 Initializing server: {}", server_name);
-            
+
             // For stdio servers, initialize them permanently
             if config.transport == "stdio" {
                 println!("🔄 [{}] Initializing stdio server...", server_name);
-                
+
                 // Add timeout to prevent hanging (longer for npm-based servers)
                 let timeout_duration = if config.command == "npx" {
                     tokio::time::Duration::from_secs(60) // NPM downloads can be slow
                 } else {
                     tokio::time::Duration::from_secs(30)
                 };
-                match tokio::time::timeout(timeout_duration, self.connection_pool.start_server(server_name)).await {
+                match tokio::time::timeout(
+                    timeout_duration,
+                    self.connection_pool.start_server(server_name),
+                )
+                .await
+                {
                     Ok(Ok(_)) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
                     }
@@ -765,40 +770,41 @@ impl BridgeState {
                         continue;
                     }
                     Err(_) => {
-                        eprintln!("⚠️ [{}] Server initialization timed out after 30s", server_name);
+                        eprintln!(
+                            "⚠️ [{}] Server initialization timed out after 30s",
+                            server_name
+                        );
                         continue;
                     }
                 }
             } else {
-                println!("🔄 [{}] Skipping initialization for {} server", server_name, config.transport);
+                println!(
+                    "🔄 [{}] Skipping initialization for {} server",
+                    server_name, config.transport
+                );
             }
-            
+
             // Discover tools from the server (with timeout)
             println!("🔍 [{}] Discovering tools...", server_name);
             let discovery_timeout = tokio::time::Duration::from_secs(45);
-            match tokio::time::timeout(discovery_timeout, self.discover_server_tools(server_name, config)).await {
+            match tokio::time::timeout(
+                discovery_timeout,
+                self.discover_server_tools(server_name, config),
+            )
+            .await
+            {
                 Ok(Ok(tools)) => {
-                    println!(
-                        "✅ [{}] Discovered {} tools",
-                        server_name,
-                        tools.len()
-                    );
+                    println!("✅ [{}] Discovered {} tools", server_name, tools.len());
                     for tool in tools {
                         let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
                         all_tools.insert(prefixed_name, tool);
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!(
-                        "⚠️ [{}] Failed to discover tools: {}",
-                        server_name, e
-                    );
+                    eprintln!("⚠️ [{}] Failed to discover tools: {}", server_name, e);
                 }
                 Err(_) => {
-                    eprintln!(
-                        "⚠️ [{}] Tool discovery timed out after 45s",
-                        server_name
-                    );
+                    eprintln!("⚠️ [{}] Tool discovery timed out after 45s", server_name);
                 }
             }
         }
