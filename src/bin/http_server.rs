@@ -362,13 +362,19 @@ impl ServerConnectionPool {
         // Store the connection
         println!("🔄 [{}] About to store connection in pool", server_name);
         {
-            println!("🔄 [{}] Attempting to acquire write lock on connections...", server_name);
+            println!(
+                "🔄 [{}] Attempting to acquire write lock on connections...",
+                server_name
+            );
             let mut connections = tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                self.connections.write()
-            ).await
-            .map_err(|_| anyhow::anyhow!("Timeout acquiring write lock on connections after 10s"))?;
-            
+                self.connections.write(),
+            )
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!("Timeout acquiring write lock on connections after 10s")
+            })?;
+
             println!("🔄 [{}] Acquired write lock on connections", server_name);
             connections.insert(server_name.to_string(), connection_arc);
             println!("✅ [{}] Connection stored successfully", server_name);
