@@ -13,6 +13,7 @@ use axum::{
 };
 use chrono::Utc;
 use clap::Parser;
+use futures::future;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -824,85 +825,105 @@ impl BridgeState {
         
         let mut all_tools = HashMap::new();
 
-        for (server_name, config) in server_list {
-            println!(
-                "🔍 Initializing server: {} at {:?}",
-                server_name,
-                chrono::Utc::now().format("%H:%M:%S")
-            );
+        // Parallel initialization: spawn tasks for each server to avoid deadlock
+        println!("🚀 Starting parallel server initialization...");
+        
+        let tasks: Vec<_> = server_list.into_iter().map(|(server_name, config)| {
+            let connection_pool = self.connection_pool.clone();
+            let self_clone = self.clone();
+            
+            tokio::spawn(async move {
+                println!(
+                    "🔍 [{}] Starting parallel initialization at {:?}",
+                    server_name,
+                    chrono::Utc::now().format("%H:%M:%S")
+                );
 
-            // For stdio servers, initialize them permanently
-            if config.transport == "stdio" {
-                println!("🔄 [{}] Initializing stdio server...", server_name);
+                // For stdio servers, initialize them permanently
+                if config.transport == "stdio" {
+                    println!("🔄 [{}] Initializing stdio server...", server_name);
 
-                // Initialize the server - MUST complete fully before tool discovery
-                match self.connection_pool.start_server(&server_name).await {
-                    Ok(_) => {
-                        println!("✅ [{}] Server initialized successfully", server_name);
-
-                        // Add small delay to ensure connection is fully stored before tool discovery
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                        println!("🔄 [{}] Ready for tool discovery phase", server_name);
+                    match connection_pool.start_server(&server_name).await {
+                        Ok(_) => {
+                            println!("✅ [{}] Server initialized successfully", server_name);
+                            
+                            // Small delay to ensure connection is stored
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
+                            return Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()));
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
-                        continue;
+                } else {
+                    println!(
+                        "🔄 [{}] Skipping initialization for {} server",
+                        server_name, config.transport
+                    );
+                }
+
+                // Discover tools with timeout
+                println!("🔍 [{}] Starting tool discovery...", server_name);
+                let discovery_start = std::time::Instant::now();
+                let discovery_timeout = tokio::time::Duration::from_secs(45);
+                
+                match tokio::time::timeout(
+                    discovery_timeout,
+                    self_clone.discover_server_tools(&server_name, &config),
+                )
+                .await
+                {
+                    Ok(Ok(tools)) => {
+                        let discovery_duration = discovery_start.elapsed();
+                        println!(
+                            "✅ [{}] Discovered {} tools in {:.2}s",
+                            server_name,
+                            tools.len(),
+                            discovery_duration.as_secs_f64()
+                        );
+
+                        // Log individual tools discovered
+                        for tool in &tools {
+                            println!("  📎 [{}] Tool: {}", server_name, tool.name);
+                        }
+                        
+                        Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, tools))
+                    }
+                    Ok(Err(e)) => {
+                        eprintln!("⚠️ [{}] Tool discovery failed: {}", server_name, e);
+                        Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()))
+                    }
+                    Err(_) => {
+                        eprintln!(
+                            "⚠️ [{}] Tool discovery timed out after {}s",
+                            server_name,
+                            discovery_timeout.as_secs()
+                        );
+                        Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()))
                     }
                 }
-                println!("🔄 [{}] Exited stdio initialization block", server_name);
-            } else {
-                println!(
-                    "🔄 [{}] Skipping initialization for {} server",
-                    server_name, config.transport
-                );
-            }
+            })
+        }).collect();
 
-            println!(
-                "🔄 [{}] About to start tool discovery section...",
-                server_name
-            );
-            // Discover tools from the server (with timeout)
-            println!("🔍 [{}] Reached tool discovery section", server_name);
-            println!(
-                "🔍 [{}] Starting tool discovery at {:?}...",
-                server_name,
-                chrono::Utc::now().format("%H:%M:%S")
-            );
-            let discovery_start = std::time::Instant::now();
-            let discovery_timeout = tokio::time::Duration::from_secs(45);
-            match tokio::time::timeout(
-                discovery_timeout,
-                self.discover_server_tools(&server_name, &config),
-            )
-            .await
-            {
-                Ok(Ok(tools)) => {
-                    let elapsed = discovery_start.elapsed();
-                    println!(
-                        "✅ [{}] Discovered {} tools in {:.2}s",
-                        server_name,
-                        tools.len(),
-                        elapsed.as_secs_f64()
-                    );
-                    for tool in &tools {
-                        println!("  📎 [{}] Tool: {}", server_name, tool.name);
-                    }
+        // Wait for all parallel tasks to complete
+        println!("⏳ Waiting for all servers to complete initialization...");
+        let results = future::join_all(tasks).await;
+        
+        // Collect all tools from successful initializations
+        for task_result in results {
+            match task_result {
+                Ok(Ok((_server_name, tools))) => {
+                    // Add tools to collection with server prefix
                     for tool in tools {
                         let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
                         all_tools.insert(prefixed_name, tool);
                     }
                 }
                 Ok(Err(e)) => {
-                    let elapsed = discovery_start.elapsed();
-                    eprintln!(
-                        "⚠️ [{}] Failed to discover tools after {:.2}s: {}",
-                        server_name,
-                        elapsed.as_secs_f64(),
-                        e
-                    );
+                    eprintln!("⚠️ Server task failed: {}", e);
                 }
-                Err(_) => {
-                    eprintln!("⚠️ [{}] Tool discovery timed out after 45s", server_name);
+                Err(e) => {
+                    eprintln!("⚠️ Task join failed: {}", e);
                 }
             }
         }
