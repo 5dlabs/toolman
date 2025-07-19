@@ -72,23 +72,24 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-livenessProbe:
-  httpGet:
-    path: /health
-    port: http
-  initialDelaySeconds: 120  # Give time for all servers to initialize (multiple 45s timeouts)
-  periodSeconds: 30
-  timeoutSeconds: 10
-  failureThreshold: 3
+# Temporarily disabled to debug initialization timing
+# livenessProbe:
+#   httpGet:
+#     path: /health
+#     port: http
+#   initialDelaySeconds: 120  # Give time for all servers to initialize (multiple 45s timeouts)
+#   periodSeconds: 30
+#   timeoutSeconds: 10
+#   failureThreshold: 3
 
-readinessProbe:
-  httpGet:
-    path: /ready
-    port: http
-  initialDelaySeconds: 90   # Give time for all servers to initialize 
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 5
+# readinessProbe:
+#   httpGet:
+#     path: /ready
+#     port: http
+#   initialDelaySeconds: 90   # Give time for all servers to initialize 
+#   periodSeconds: 10
+#   timeoutSeconds: 5
+#   failureThreshold: 5
 
 autoscaling:
   enabled: false

@@ -271,17 +271,7 @@ impl ServerConnectionPool {
             anyhow::anyhow!("Server '{}' not found in configuration", server_name)
         })?;
 
-        // Check if this is a Docker-based server and ensure Docker is ready
-        if config.command == "docker" {
-            println!(
-                "🐳 [{}] Detected Docker-based server, checking Docker readiness...",
-                server_name
-            );
-            if let Err(e) = self.wait_for_docker(30).await {
-                println!("⚠️ [{}] Docker readiness check failed: {}", server_name, e);
-                // Continue anyway, but warn that it might not work
-            }
-        }
+        // Docker readiness is now checked once at startup, so we can proceed directly
 
         println!("🚀 Starting MCP server: {}", server_name);
 
@@ -736,6 +726,17 @@ impl BridgeState {
         let init_start = std::time::Instant::now();
         println!("🔍 Initializing all configured servers and discovering tools at {:?}...", chrono::Utc::now().format("%H:%M:%S"));
 
+        // Wait for Docker to be ready BEFORE initializing any servers (prevents race conditions)
+        println!("🐳 Ensuring Docker daemon is ready before starting any servers...");
+        let docker_start = std::time::Instant::now();
+        if let Err(e) = self.connection_pool.wait_for_docker(60).await {
+            eprintln!("⚠️ Docker readiness check failed: {}", e);
+            eprintln!("⚠️ Continuing anyway, but Docker-based servers may fail");
+        } else {
+            let docker_elapsed = docker_start.elapsed();
+            println!("✅ Docker is ready (took {:.2}s)", docker_elapsed.as_secs_f64());
+        }
+
         let config_manager = self.system_config_manager.read().await;
         let servers = config_manager.get_servers();
         let mut all_tools = HashMap::new();
@@ -745,7 +746,7 @@ impl BridgeState {
         server_list.sort_by_key(|(name, _)| *name);
 
         for (server_name, config) in server_list {
-            println!("🔍 Initializing server: {}", server_name);
+            println!("🔍 Initializing server: {} at {:?}", server_name, chrono::Utc::now().format("%H:%M:%S"));
 
             // For stdio servers, initialize them permanently
             if config.transport == "stdio" {
@@ -755,6 +756,7 @@ impl BridgeState {
                 match self.connection_pool.start_server(server_name).await {
                     Ok(_) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
+                        println!("🔄 [{}] Proceeding to tool discovery phase...", server_name);
                     }
                     Err(e) => {
                         eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
@@ -769,6 +771,7 @@ impl BridgeState {
             }
 
             // Discover tools from the server (with timeout)
+            println!("🔍 [{}] Reached tool discovery section", server_name);
             println!("🔍 [{}] Starting tool discovery at {:?}...", server_name, chrono::Utc::now().format("%H:%M:%S"));
             let discovery_start = std::time::Instant::now();
             let discovery_timeout = tokio::time::Duration::from_secs(45);
