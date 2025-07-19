@@ -71,8 +71,6 @@ pub struct ServerConfig {
     pub args: Vec<String>,
     /// For http: URL to connect to
     pub url: Option<String>,
-    #[serde(default)]
-    pub enabled: bool,
     #[serde(rename = "alwaysActive", default)]
     pub always_active: bool,
     #[serde(default)]

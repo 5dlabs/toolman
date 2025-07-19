@@ -811,9 +811,8 @@ impl BridgeState {
         let mut all_tools = HashMap::new();
 
         for (server_name, config) in servers.iter() {
-            if config.enabled {
-                println!("🔍 Discovering tools from server: {}", server_name);
-                match self.discover_server_tools(server_name, config).await {
+            println!("🔍 Discovering tools from server: {}", server_name);
+            match self.discover_server_tools(server_name, config).await {
                     Ok(tools) => {
                         println!(
                             "✅ Discovered {} tools from server '{}'",
@@ -832,7 +831,6 @@ impl BridgeState {
                         );
                     }
                 }
-            }
         }
 
         // Store discovered tools
@@ -2290,11 +2288,14 @@ async fn client_config_endpoint(
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Default project_dir to current directory if not specified
+    let project_dir = args.project_dir.or_else(|| Some(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))));
+
     // Handle export-tools flag - discover tools and export to file, then exit
     if let Some(export_path) = args.export_tools {
         println!("🔍 Export mode: Discovering all tools from configured servers...");
 
-        let state = BridgeState::new(args.project_dir)?;
+        let state = BridgeState::new(project_dir.clone())?;
 
         // Discover all tools without enabling them
         let config_manager = state.system_config_manager.read().await;
@@ -2334,7 +2335,6 @@ async fn main() -> Result<()> {
                     "description": config.description.as_deref().unwrap_or("No description"),
                     "command": config.command,
                     "args": config.args,
-                    "enabled": config.enabled,
                     "always_active": config.always_active,
                     "tools_count": tools.len(),
                     "tools": tools.iter().map(|tool| serde_json::json!({
@@ -2385,7 +2385,7 @@ async fn main() -> Result<()> {
     }
     println!("🔍 End Environment Variables\n");
 
-    let state = BridgeState::new(args.project_dir)?;
+    let state = BridgeState::new(project_dir)?;
 
     // Give the tool discovery a moment to start
     // In production, you might want to wait for discovery to complete

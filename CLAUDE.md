@@ -25,6 +25,10 @@ This is an MCP (Model Context Protocol) proxy that provides session-based config
 - Run integration tests: `cargo test --test integration`
 - Run session config tests: `cargo test session_config_tests`
 - Test with Docker: `./test-session-config.sh`
+- **Start HTTP server locally**: `cargo run --bin toolman-server -- --project-dir .`
+  - This loads `servers-config.json` and `client-config.json` from current directory
+  - Server will be available at `http://localhost:3000/mcp`
+  - Use this command to test tool discovery and calls locally
 
 ## Architecture
 - `src/config.rs`: Core configuration structures
