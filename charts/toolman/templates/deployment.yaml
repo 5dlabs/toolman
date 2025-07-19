@@ -91,7 +91,7 @@ spec:
             {{- end }}
             {{- if .Values.config.servers }}
             {{- range $serverName, $serverConfig := .Values.config.servers }}
-              {{- if and $serverConfig.secretRef $serverConfig.enabled }}
+              {{- if $serverConfig.secretRef }}
                 {{- range $serverConfig.secretRef.keys }}
             - name: {{ . }}
               valueFrom:
