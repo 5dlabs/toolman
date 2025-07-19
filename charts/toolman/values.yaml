@@ -184,7 +184,8 @@ config:
         "-v", "/data/.kube:/home/appuser/.kube:ro",
         "-e", "SERVER_MODE=stdio",
         "-e", "KUBECONFIG=/home/appuser/.kube/config",
-        "ginnux/k8s-mcp-server:latest"
+        "ginnux/k8s-mcp-server:latest",
+        "--mode", "stdio"
       ]
       workingDirectory: "project_root"
       secretRef:
