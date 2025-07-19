@@ -410,12 +410,12 @@ impl TemplateContext {
 /// Supports: {{project_dir}}, {{working_dir}}, {{server_name}}
 pub fn substitute_template_variables(template: &str, context: &TemplateContext) -> String {
     let mut result = template.to_string();
-    
+
     // Replace template variables
     result = result.replace("{{project_dir}}", &context.project_dir.to_string_lossy());
     result = result.replace("{{working_dir}}", &context.working_dir.to_string_lossy());
     result = result.replace("{{server_name}}", &context.server_name);
-    
+
     result
 }
 

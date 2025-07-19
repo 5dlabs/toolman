@@ -18,8 +18,8 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use toolman::config::{TemplateContext, process_env_templates};
 use tokio::sync::RwLock;
+use toolman::config::{process_env_templates, TemplateContext};
 use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager};
 use toolman::resolve_working_directory;
 use tower_http::cors::CorsLayer;
@@ -326,17 +326,12 @@ impl ServerConnectionPool {
             server_name.to_string(),
         );
         let processed_env = process_env_templates(&config.env, &template_context);
-        
+
         // Add/override with server-specific environment variables
         for (key, value) in &processed_env {
             cmd.env(key, value);
             if !value.is_empty() {
-                println!(
-                    "🔧 [{}] Setting env {}={}",
-                    server_name,
-                    key,
-                    value
-                );
+                println!("🔧 [{}] Setting env {}={}", server_name, key, value);
             }
         }
 
@@ -812,9 +807,7 @@ impl BridgeState {
                 // Use transport type to determine communication method
                 println!(
                     "🔍 [{}] URL: {}, transport: {}",
-                    server_name,
-                    url,
-                    config.transport
+                    server_name, url, config.transport
                 );
                 let (message_url, session_id) = if config.transport == "sse" {
                     println!(
@@ -1165,17 +1158,12 @@ impl BridgeState {
             server_name.to_string(),
         );
         let processed_env = process_env_templates(&config.env, &template_context);
-        
+
         // Add/override with server-specific environment variables
         for (key, value) in &processed_env {
             cmd.env(key, value);
             if !value.is_empty() {
-                println!(
-                    "🔧 [{}] Setting env {}={}",
-                    server_name,
-                    key,
-                    value
-                );
+                println!("🔧 [{}] Setting env {}={}", server_name, key, value);
             }
         }
 
@@ -1678,40 +1666,76 @@ async fn discover_tools_via_sse(
             match chunk_result {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
-                    println!("🔍 [{}] SSE chunk received ({} bytes):\n{}", server_name_clone, chunk.len(), chunk_str);
-                    
+                    println!(
+                        "🔍 [{}] SSE chunk received ({} bytes):\n{}",
+                        server_name_clone,
+                        chunk.len(),
+                        chunk_str
+                    );
+
                     // Look for "event: message" followed by "data: {...}"
                     let lines: Vec<&str> = chunk_str.lines().collect();
                     println!("🔍 [{}] SSE lines parsed: {:?}", server_name_clone, lines);
-                    
+
                     for i in 0..lines.len() {
                         let line = lines[i];
                         if line == "event: message" && i + 1 < lines.len() {
-                            println!("✅ [{}] Found 'event: message' at line {}", server_name_clone, i);
+                            println!(
+                                "✅ [{}] Found 'event: message' at line {}",
+                                server_name_clone, i
+                            );
                             if let Some(data_line) = lines.get(i + 1) {
                                 println!("🔍 [{}] Next line: '{}'", server_name_clone, data_line);
                                 if let Some(json_str) = data_line.strip_prefix("data: ") {
-                                    println!("🔍 [{}] Extracted JSON: {}", server_name_clone, json_str);
-                                    if let Ok(response) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                        println!("📨 [{}] SSE response received and parsed successfully", server_name_clone);
+                                    println!(
+                                        "🔍 [{}] Extracted JSON: {}",
+                                        server_name_clone, json_str
+                                    );
+                                    if let Ok(response) =
+                                        serde_json::from_str::<serde_json::Value>(json_str)
+                                    {
+                                        println!(
+                                            "📨 [{}] SSE response received and parsed successfully",
+                                            server_name_clone
+                                        );
                                         let _ = tx_clone.send(response);
                                     } else {
-                                        println!("❌ [{}] Failed to parse JSON: {}", server_name_clone, json_str);
+                                        println!(
+                                            "❌ [{}] Failed to parse JSON: {}",
+                                            server_name_clone, json_str
+                                        );
                                     }
                                 } else {
-                                    println!("❌ [{}] Line doesn't start with 'data: ': '{}'", server_name_clone, data_line);
+                                    println!(
+                                        "❌ [{}] Line doesn't start with 'data: ': '{}'",
+                                        server_name_clone, data_line
+                                    );
                                 }
                             }
                         } else if line.starts_with("data: ") {
                             // Handle standalone data lines without event prefix
-                            println!("🔍 [{}] Found standalone data line: '{}'", server_name_clone, line);
+                            println!(
+                                "🔍 [{}] Found standalone data line: '{}'",
+                                server_name_clone, line
+                            );
                             if let Some(json_str) = line.strip_prefix("data: ") {
-                                println!("🔍 [{}] Extracted JSON from standalone data: {}", server_name_clone, json_str);
-                                if let Ok(response) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                    println!("📨 [{}] SSE response received from standalone data", server_name_clone);
+                                println!(
+                                    "🔍 [{}] Extracted JSON from standalone data: {}",
+                                    server_name_clone, json_str
+                                );
+                                if let Ok(response) =
+                                    serde_json::from_str::<serde_json::Value>(json_str)
+                                {
+                                    println!(
+                                        "📨 [{}] SSE response received from standalone data",
+                                        server_name_clone
+                                    );
                                     let _ = tx_clone.send(response);
                                 } else {
-                                    println!("❌ [{}] Failed to parse JSON from standalone data: {}", server_name_clone, json_str);
+                                    println!(
+                                        "❌ [{}] Failed to parse JSON from standalone data: {}",
+                                        server_name_clone, json_str
+                                    );
                                 }
                             }
                         } else {
@@ -2418,40 +2442,76 @@ async fn call_tool_via_sse(
             match chunk_result {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
-                    println!("🔍 [{}] SSE chunk received ({} bytes):\n{}", server_name_clone, chunk.len(), chunk_str);
-                    
+                    println!(
+                        "🔍 [{}] SSE chunk received ({} bytes):\n{}",
+                        server_name_clone,
+                        chunk.len(),
+                        chunk_str
+                    );
+
                     // Look for "event: message" followed by "data: {...}"
                     let lines: Vec<&str> = chunk_str.lines().collect();
                     println!("🔍 [{}] SSE lines parsed: {:?}", server_name_clone, lines);
-                    
+
                     for i in 0..lines.len() {
                         let line = lines[i];
                         if line == "event: message" && i + 1 < lines.len() {
-                            println!("✅ [{}] Found 'event: message' at line {}", server_name_clone, i);
+                            println!(
+                                "✅ [{}] Found 'event: message' at line {}",
+                                server_name_clone, i
+                            );
                             if let Some(data_line) = lines.get(i + 1) {
                                 println!("🔍 [{}] Next line: '{}'", server_name_clone, data_line);
                                 if let Some(json_str) = data_line.strip_prefix("data: ") {
-                                    println!("🔍 [{}] Extracted JSON: {}", server_name_clone, json_str);
-                                    if let Ok(response) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                        println!("📨 [{}] SSE response received and parsed successfully", server_name_clone);
+                                    println!(
+                                        "🔍 [{}] Extracted JSON: {}",
+                                        server_name_clone, json_str
+                                    );
+                                    if let Ok(response) =
+                                        serde_json::from_str::<serde_json::Value>(json_str)
+                                    {
+                                        println!(
+                                            "📨 [{}] SSE response received and parsed successfully",
+                                            server_name_clone
+                                        );
                                         let _ = tx_clone.send(response);
                                     } else {
-                                        println!("❌ [{}] Failed to parse JSON: {}", server_name_clone, json_str);
+                                        println!(
+                                            "❌ [{}] Failed to parse JSON: {}",
+                                            server_name_clone, json_str
+                                        );
                                     }
                                 } else {
-                                    println!("❌ [{}] Line doesn't start with 'data: ': '{}'", server_name_clone, data_line);
+                                    println!(
+                                        "❌ [{}] Line doesn't start with 'data: ': '{}'",
+                                        server_name_clone, data_line
+                                    );
                                 }
                             }
                         } else if line.starts_with("data: ") {
                             // Handle standalone data lines without event prefix
-                            println!("🔍 [{}] Found standalone data line: '{}'", server_name_clone, line);
+                            println!(
+                                "🔍 [{}] Found standalone data line: '{}'",
+                                server_name_clone, line
+                            );
                             if let Some(json_str) = line.strip_prefix("data: ") {
-                                println!("🔍 [{}] Extracted JSON from standalone data: {}", server_name_clone, json_str);
-                                if let Ok(response) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                    println!("📨 [{}] SSE response received from standalone data", server_name_clone);
+                                println!(
+                                    "🔍 [{}] Extracted JSON from standalone data: {}",
+                                    server_name_clone, json_str
+                                );
+                                if let Ok(response) =
+                                    serde_json::from_str::<serde_json::Value>(json_str)
+                                {
+                                    println!(
+                                        "📨 [{}] SSE response received from standalone data",
+                                        server_name_clone
+                                    );
                                     let _ = tx_clone.send(response);
                                 } else {
-                                    println!("❌ [{}] Failed to parse JSON from standalone data: {}", server_name_clone, json_str);
+                                    println!(
+                                        "❌ [{}] Failed to parse JSON from standalone data: {}",
+                                        server_name_clone, json_str
+                                    );
                                 }
                             }
                         } else {
