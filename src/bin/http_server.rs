@@ -977,9 +977,8 @@ impl BridgeState {
                     None
                 }
             }; // Read lock automatically dropped here
-            
-            if let Some(connection) = connection {
 
+            if let Some(connection) = connection {
                 // Send tools/list request using existing connection
                 let tools_request = json!({
                     "jsonrpc": "2.0",
