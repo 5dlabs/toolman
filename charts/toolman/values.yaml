@@ -152,6 +152,7 @@ config:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-brave-search"]
       workingDirectory: "project_root"
+      enabled: true
       secretRef:
         name: "toolman-brave-search-secrets"
         keys:
