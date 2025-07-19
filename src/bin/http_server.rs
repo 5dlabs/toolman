@@ -915,7 +915,9 @@ impl BridgeState {
                 Ok(Ok((_server_name, tools))) => {
                     // Add tools to collection with server prefix
                     for tool in tools {
-                        let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
+                        // Normalize server name: replace hyphens with underscores for consistent parsing
+                        let normalized_server_name = tool.server_name.replace('-', "_");
+                        let prefixed_name = format!("{}_{}", normalized_server_name, tool.name);
                         all_tools.insert(prefixed_name, tool);
                     }
                 }
