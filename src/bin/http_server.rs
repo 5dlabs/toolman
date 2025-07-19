@@ -741,7 +741,7 @@ impl BridgeState {
 
         for (server_name, config) in servers.iter() {
             println!("🔍 Initializing server: {}", server_name);
-            
+
             // For stdio servers, initialize them permanently
             if config.transport == "stdio" {
                 match self.connection_pool.start_server(server_name).await {
@@ -754,7 +754,7 @@ impl BridgeState {
                     }
                 }
             }
-            
+
             // Discover tools from the server
             match self.discover_server_tools(server_name, config).await {
                 Ok(tools) => {
