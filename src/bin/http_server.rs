@@ -18,8 +18,8 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use toolman::config::{TemplateContext, process_env_templates};
 use tokio::sync::RwLock;
+use toolman::config::{process_env_templates, TemplateContext};
 use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager};
 use toolman::resolve_working_directory;
 use tower_http::cors::CorsLayer;
@@ -326,17 +326,12 @@ impl ServerConnectionPool {
             server_name.to_string(),
         );
         let processed_env = process_env_templates(&config.env, &template_context);
-        
+
         // Add/override with server-specific environment variables
         for (key, value) in &processed_env {
             cmd.env(key, value);
             if !value.is_empty() {
-                println!(
-                    "🔧 [{}] Setting env {}={}",
-                    server_name,
-                    key,
-                    value
-                );
+                println!("🔧 [{}] Setting env {}={}", server_name, key, value);
             }
         }
 
@@ -812,9 +807,7 @@ impl BridgeState {
                 // Use transport type to determine communication method
                 println!(
                     "🔍 [{}] URL: {}, transport: {}",
-                    server_name,
-                    url,
-                    config.transport
+                    server_name, url, config.transport
                 );
                 let (message_url, session_id) = if config.transport == "sse" {
                     println!(
@@ -1165,17 +1158,12 @@ impl BridgeState {
             server_name.to_string(),
         );
         let processed_env = process_env_templates(&config.env, &template_context);
-        
+
         // Add/override with server-specific environment variables
         for (key, value) in &processed_env {
             cmd.env(key, value);
             if !value.is_empty() {
-                println!(
-                    "🔧 [{}] Setting env {}={}",
-                    server_name,
-                    key,
-                    value
-                );
+                println!("🔧 [{}] Setting env {}={}", server_name, key, value);
             }
         }
 
@@ -1676,7 +1664,7 @@ async fn discover_tools_via_sse(
     tokio::spawn(async move {
         let mut accumulated_data = String::new();
         let mut in_data_section = false;
-        
+
         while let Some(chunk_result) = body.next().await {
             match chunk_result {
                 Ok(chunk) => {
@@ -1687,10 +1675,10 @@ async fn discover_tools_via_sse(
                         chunk.len(),
                         chunk_str
                     );
-                    
+
                     let lines: Vec<&str> = chunk_str.lines().collect();
                     println!("🔍 [{}] SSE lines parsed: {:?}", server_name_clone, lines);
-                    
+
                     for line in lines {
                         if line == "event: message" {
                             println!("✅ [{}] Found 'event: message'", server_name_clone);
@@ -1708,7 +1696,10 @@ async fn discover_tools_via_sse(
                             }
                         } else if line.starts_with("data: ") {
                             // Handle standalone data lines without event prefix
-                            println!("🔍 [{}] Found standalone data line: '{}'", server_name_clone, line);
+                            println!(
+                                "🔍 [{}] Found standalone data line: '{}'",
+                                server_name_clone, line
+                            );
                             if let Some(json_str) = line.strip_prefix("data: ") {
                                 accumulated_data = json_str.to_string();
                                 println!(
@@ -1723,9 +1714,14 @@ async fn discover_tools_via_sse(
                                 server_name_clone,
                                 accumulated_data.len()
                             );
-                            println!("🔍 [{}] Accumulated JSON: {}", server_name_clone, accumulated_data);
-                            
-                            if let Ok(response) = serde_json::from_str::<serde_json::Value>(&accumulated_data) {
+                            println!(
+                                "🔍 [{}] Accumulated JSON: {}",
+                                server_name_clone, accumulated_data
+                            );
+
+                            if let Ok(response) =
+                                serde_json::from_str::<serde_json::Value>(&accumulated_data)
+                            {
                                 println!(
                                     "📨 [{}] SSE response parsed successfully from accumulated data",
                                     server_name_clone
@@ -2441,7 +2437,7 @@ async fn call_tool_via_sse(
     tokio::spawn(async move {
         let mut accumulated_data = String::new();
         let mut in_data_section = false;
-        
+
         while let Some(chunk_result) = body.next().await {
             match chunk_result {
                 Ok(chunk) => {
@@ -2452,10 +2448,10 @@ async fn call_tool_via_sse(
                         chunk.len(),
                         chunk_str
                     );
-                    
+
                     let lines: Vec<&str> = chunk_str.lines().collect();
                     println!("🔍 [{}] SSE lines parsed: {:?}", server_name_clone, lines);
-                    
+
                     for line in lines {
                         if line == "event: message" {
                             println!("✅ [{}] Found 'event: message'", server_name_clone);
@@ -2473,7 +2469,10 @@ async fn call_tool_via_sse(
                             }
                         } else if line.starts_with("data: ") {
                             // Handle standalone data lines without event prefix
-                            println!("🔍 [{}] Found standalone data line: '{}'", server_name_clone, line);
+                            println!(
+                                "🔍 [{}] Found standalone data line: '{}'",
+                                server_name_clone, line
+                            );
                             if let Some(json_str) = line.strip_prefix("data: ") {
                                 accumulated_data = json_str.to_string();
                                 println!(
@@ -2488,9 +2487,14 @@ async fn call_tool_via_sse(
                                 server_name_clone,
                                 accumulated_data.len()
                             );
-                            println!("🔍 [{}] Accumulated JSON: {}", server_name_clone, accumulated_data);
-                            
-                            if let Ok(response) = serde_json::from_str::<serde_json::Value>(&accumulated_data) {
+                            println!(
+                                "🔍 [{}] Accumulated JSON: {}",
+                                server_name_clone, accumulated_data
+                            );
+
+                            if let Ok(response) =
+                                serde_json::from_str::<serde_json::Value>(&accumulated_data)
+                            {
                                 println!(
                                     "📨 [{}] SSE response parsed successfully from accumulated data",
                                     server_name_clone
