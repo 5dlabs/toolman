@@ -367,12 +367,12 @@ impl ServerConnectionPool {
                 server_name
             );
             let mut connections = tokio::time::timeout(
-                tokio::time::Duration::from_secs(10),
+                tokio::time::Duration::from_secs(30), // Increased timeout
                 self.connections.write(),
             )
             .await
             .map_err(|_| {
-                anyhow::anyhow!("Timeout acquiring write lock on connections after 10s")
+                anyhow::anyhow!("DEADLOCK: Timeout acquiring write lock on connections after 30s - read locks may be blocking")
             })?;
 
             println!("🔄 [{}] Acquired write lock on connections", server_name);
@@ -964,14 +964,21 @@ impl BridgeState {
 
         // For stdio servers, check if we already have a connection (reuse it to avoid deadlock)
         if config.transport == "stdio" {
-            let connections = self.connection_pool.connections.read().await;
-            if let Some(connection) = connections.get(server_name) {
-                println!(
-                    "🔄 [{}] Reusing existing stdio connection for tool discovery",
-                    server_name
-                );
-                let connection = connection.clone(); // Clone before dropping the lock
-                drop(connections); // Release the read lock
+            // CRITICAL: Minimize read lock duration to prevent deadlock with write locks
+            let connection = {
+                let connections = self.connection_pool.connections.read().await;
+                if let Some(connection) = connections.get(server_name) {
+                    println!(
+                        "🔄 [{}] Reusing existing stdio connection for tool discovery",
+                        server_name
+                    );
+                    Some(connection.clone()) // Clone before dropping the lock
+                } else {
+                    None
+                }
+            }; // Read lock automatically dropped here
+            
+            if let Some(connection) = connection {
 
                 // Send tools/list request using existing connection
                 let tools_request = json!({
