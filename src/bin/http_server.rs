@@ -760,12 +760,14 @@ impl BridgeState {
                     Ok(_) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
                         println!("🔄 [{}] Proceeding to tool discovery phase...", server_name);
+                        println!("🔄 [{}] About to exit initialization block...", server_name);
                     }
                     Err(e) => {
                         eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
                         continue;
                     }
                 }
+                println!("🔄 [{}] Exited stdio initialization block", server_name);
             } else {
                 println!(
                     "🔄 [{}] Skipping initialization for {} server",
@@ -773,6 +775,7 @@ impl BridgeState {
                 );
             }
 
+            println!("🔄 [{}] About to start tool discovery section...", server_name);
             // Discover tools from the server (with timeout)
             println!("🔍 [{}] Reached tool discovery section", server_name);
             println!(
