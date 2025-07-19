@@ -159,7 +159,6 @@ impl SystemConfigManager {
         Ok(())
     }
 
-
     /// Get a mutable reference to the config for bulk updates
     pub fn get_config_mut(&mut self) -> &mut ServersConfig {
         &mut self.config
