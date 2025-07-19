@@ -272,9 +272,13 @@ impl ServerConnectionPool {
         // Get server config and project directory (scoped read lock)
         let (config, project_dir) = {
             let servers = self.config_manager.read().await;
-            let config = servers.get_servers().get(server_name).ok_or_else(|| {
-                anyhow::anyhow!("Server '{}' not found in configuration", server_name)
-            })?.clone(); // Clone to avoid borrowing across await points
+            let config = servers
+                .get_servers()
+                .get(server_name)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Server '{}' not found in configuration", server_name)
+                })?
+                .clone(); // Clone to avoid borrowing across await points
             let project_dir = servers
                 .get_config_path()
                 .parent()
@@ -370,15 +374,22 @@ impl ServerConnectionPool {
                 "🔄 [{}] Attempting to acquire write lock on connections...",
                 server_name
             );
-            
+
             // Check if there are any active read locks by trying a try_read first
             if let Ok(read_guard) = self.connections.try_read() {
-                println!("🔍 [{}] No read locks detected, {} connections exist", server_name, read_guard.len());
+                println!(
+                    "🔍 [{}] No read locks detected, {} connections exist",
+                    server_name,
+                    read_guard.len()
+                );
                 drop(read_guard);
             } else {
-                println!("⚠️ [{}] Read locks are active - this will cause write lock to block!", server_name);
+                println!(
+                    "⚠️ [{}] Read locks are active - this will cause write lock to block!",
+                    server_name
+                );
             }
-            
+
             let mut connections = tokio::time::timeout(
                 tokio::time::Duration::from_secs(5), // Reduced timeout for faster debugging
                 self.connections.write(),
@@ -816,99 +827,111 @@ impl BridgeState {
         let server_list = {
             let config_manager = self.system_config_manager.read().await;
             let servers = config_manager.get_servers();
-            
+
             // Process servers in deterministic order for consistent behavior
-            let mut server_list: Vec<_> = servers.iter().map(|(name, config)| (name.clone(), config.clone())).collect();
+            let mut server_list: Vec<_> = servers
+                .iter()
+                .map(|(name, config)| (name.clone(), config.clone()))
+                .collect();
             server_list.sort_by_key(|(name, _)| name.clone());
             server_list
         }; // Read lock automatically dropped here
-        
+
         let mut all_tools = HashMap::new();
 
         // Parallel initialization: spawn tasks for each server to avoid deadlock
         println!("🚀 Starting parallel server initialization...");
-        
-        let tasks: Vec<_> = server_list.into_iter().map(|(server_name, config)| {
-            let connection_pool = self.connection_pool.clone();
-            let self_clone = self.clone();
-            
-            tokio::spawn(async move {
-                println!(
-                    "🔍 [{}] Starting parallel initialization at {:?}",
-                    server_name,
-                    chrono::Utc::now().format("%H:%M:%S")
-                );
 
-                // For stdio servers, initialize them permanently
-                if config.transport == "stdio" {
-                    println!("🔄 [{}] Initializing stdio server...", server_name);
+        let tasks: Vec<_> = server_list
+            .into_iter()
+            .map(|(server_name, config)| {
+                let connection_pool = self.connection_pool.clone();
+                let self_clone = self.clone();
 
-                    match connection_pool.start_server(&server_name).await {
-                        Ok(_) => {
-                            println!("✅ [{}] Server initialized successfully", server_name);
-                            
-                            // Small delay to ensure connection is stored
-                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                        }
-                        Err(e) => {
-                            eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
-                            return Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()));
-                        }
-                    }
-                } else {
+                tokio::spawn(async move {
                     println!(
-                        "🔄 [{}] Skipping initialization for {} server",
-                        server_name, config.transport
+                        "🔍 [{}] Starting parallel initialization at {:?}",
+                        server_name,
+                        chrono::Utc::now().format("%H:%M:%S")
                     );
-                }
 
-                // Discover tools with timeout
-                println!("🔍 [{}] Starting tool discovery...", server_name);
-                let discovery_start = std::time::Instant::now();
-                let discovery_timeout = tokio::time::Duration::from_secs(45);
-                
-                match tokio::time::timeout(
-                    discovery_timeout,
-                    self_clone.discover_server_tools(&server_name, &config),
-                )
-                .await
-                {
-                    Ok(Ok(tools)) => {
-                        let discovery_duration = discovery_start.elapsed();
-                        println!(
-                            "✅ [{}] Discovered {} tools in {:.2}s",
-                            server_name,
-                            tools.len(),
-                            discovery_duration.as_secs_f64()
-                        );
+                    // For stdio servers, initialize them permanently
+                    if config.transport == "stdio" {
+                        println!("🔄 [{}] Initializing stdio server...", server_name);
 
-                        // Log individual tools discovered
-                        for tool in &tools {
-                            println!("  📎 [{}] Tool: {}", server_name, tool.name);
+                        match connection_pool.start_server(&server_name).await {
+                            Ok(_) => {
+                                println!("✅ [{}] Server initialized successfully", server_name);
+
+                                // Small delay to ensure connection is stored
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "⚠️ [{}] Failed to initialize server: {}",
+                                    server_name, e
+                                );
+                                return Ok::<(String, Vec<Tool>), anyhow::Error>((
+                                    server_name,
+                                    Vec::new(),
+                                ));
+                            }
                         }
-                        
-                        Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, tools))
-                    }
-                    Ok(Err(e)) => {
-                        eprintln!("⚠️ [{}] Tool discovery failed: {}", server_name, e);
-                        Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()))
-                    }
-                    Err(_) => {
-                        eprintln!(
-                            "⚠️ [{}] Tool discovery timed out after {}s",
-                            server_name,
-                            discovery_timeout.as_secs()
+                    } else {
+                        println!(
+                            "🔄 [{}] Skipping initialization for {} server",
+                            server_name, config.transport
                         );
-                        Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()))
                     }
-                }
+
+                    // Discover tools with timeout
+                    println!("🔍 [{}] Starting tool discovery...", server_name);
+                    let discovery_start = std::time::Instant::now();
+                    let discovery_timeout = tokio::time::Duration::from_secs(45);
+
+                    match tokio::time::timeout(
+                        discovery_timeout,
+                        self_clone.discover_server_tools(&server_name, &config),
+                    )
+                    .await
+                    {
+                        Ok(Ok(tools)) => {
+                            let discovery_duration = discovery_start.elapsed();
+                            println!(
+                                "✅ [{}] Discovered {} tools in {:.2}s",
+                                server_name,
+                                tools.len(),
+                                discovery_duration.as_secs_f64()
+                            );
+
+                            // Log individual tools discovered
+                            for tool in &tools {
+                                println!("  📎 [{}] Tool: {}", server_name, tool.name);
+                            }
+
+                            Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, tools))
+                        }
+                        Ok(Err(e)) => {
+                            eprintln!("⚠️ [{}] Tool discovery failed: {}", server_name, e);
+                            Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()))
+                        }
+                        Err(_) => {
+                            eprintln!(
+                                "⚠️ [{}] Tool discovery timed out after {}s",
+                                server_name,
+                                discovery_timeout.as_secs()
+                            );
+                            Ok::<(String, Vec<Tool>), anyhow::Error>((server_name, Vec::new()))
+                        }
+                    }
+                })
             })
-        }).collect();
+            .collect();
 
         // Wait for all parallel tasks to complete
         println!("⏳ Waiting for all servers to complete initialization...");
         let results = future::join_all(tasks).await;
-        
+
         // Collect all tools from successful initializations
         for task_result in results {
             match task_result {
