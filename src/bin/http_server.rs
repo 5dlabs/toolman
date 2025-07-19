@@ -352,18 +352,24 @@ impl ServerConnectionPool {
         let connection_arc = Arc::new(Mutex::new(connection));
 
         // Initialize the MCP server
+        println!("🔄 [{}] About to call initialize_server", server_name);
         self.initialize_server(connection_arc.clone()).await?;
+        println!("✅ [{}] initialize_server completed successfully", server_name);
 
         // Store the connection
+        println!("🔄 [{}] About to store connection in pool", server_name);
         {
             let mut connections = self.connections.write().await;
+            println!("🔄 [{}] Acquired write lock on connections", server_name);
             connections.insert(server_name.to_string(), connection_arc);
+            println!("✅ [{}] Connection stored successfully", server_name);
         }
 
         println!(
             "✅ Successfully started and initialized server: {}",
             server_name
         );
+        println!("🔄 [{}] Returning from start_server_with_context", server_name);
         Ok(())
     }
 
@@ -398,10 +404,14 @@ impl ServerConnectionPool {
             }
         });
 
+        println!("🔄 [{}] Sending initialize request", server_name);
         self.send_request(connection.clone(), init_request).await?;
+        println!("✅ [{}] Initialize request sent successfully", server_name);
 
         // Read initialization response
+        println!("🔄 [{}] About to read initialize response (THIS MIGHT HANG)", server_name);
         let _init_response = self.read_response(connection.clone()).await?;
+        println!("✅ [{}] Initialize response received successfully", server_name);
 
         // Send initialized notification
         let initialized_notification = json!({
@@ -461,7 +471,17 @@ impl ServerConnectionPool {
         let mut conn = connection.lock().await;
 
         let mut line = String::new();
+        let mut attempts = 0;
+        const MAX_READ_ATTEMPTS: usize = 50; // Prevent infinite loops
+        
         loop {
+            attempts += 1;
+            if attempts > MAX_READ_ATTEMPTS {
+                return Err(anyhow::anyhow!(
+                    "Maximum read attempts ({}) exceeded while waiting for valid response", 
+                    MAX_READ_ATTEMPTS
+                ));
+            }
             line.clear();
             let bytes_read = tokio::time::timeout(
                 tokio::time::Duration::from_secs(30), // Increased timeout for large responses
