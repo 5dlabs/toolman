@@ -782,7 +782,10 @@ impl BridgeState {
                 );
             }
 
-            println!("🔄 [{}] About to start tool discovery section...", server_name);
+            println!(
+                "🔄 [{}] About to start tool discovery section...",
+                server_name
+            );
             // Discover tools from the server (with timeout)
             println!("🔍 [{}] Reached tool discovery section", server_name);
             println!(
