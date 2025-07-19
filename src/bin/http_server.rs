@@ -739,15 +739,23 @@ impl BridgeState {
         let servers = config_manager.get_servers();
         let mut all_tools = HashMap::new();
 
-        for (server_name, config) in servers.iter() {
+        // Process servers in deterministic order for consistent behavior
+        let mut server_list: Vec<_> = servers.iter().collect();
+        server_list.sort_by_key(|(name, _)| *name);
+
+        for (server_name, config) in server_list {
             println!("🔍 Initializing server: {}", server_name);
             
             // For stdio servers, initialize them permanently
             if config.transport == "stdio" {
                 println!("🔄 [{}] Initializing stdio server...", server_name);
                 
-                // Add timeout to prevent hanging
-                let timeout_duration = tokio::time::Duration::from_secs(30);
+                // Add timeout to prevent hanging (longer for npm-based servers)
+                let timeout_duration = if config.command == "npx" {
+                    tokio::time::Duration::from_secs(60) // NPM downloads can be slow
+                } else {
+                    tokio::time::Duration::from_secs(30)
+                };
                 match tokio::time::timeout(timeout_duration, self.connection_pool.start_server(server_name)).await {
                     Ok(Ok(_)) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
