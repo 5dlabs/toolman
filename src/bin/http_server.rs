@@ -1681,7 +1681,12 @@ async fn discover_tools_via_sse(
             match chunk_result {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
-                    println!("🔍 [{}] SSE chunk received ({} bytes):\n{}", server_name_clone, chunk.len(), chunk_str);
+                    println!(
+                        "🔍 [{}] SSE chunk received ({} bytes):\n{}",
+                        server_name_clone,
+                        chunk.len(),
+                        chunk_str
+                    );
                     
                     let lines: Vec<&str> = chunk_str.lines().collect();
                     println!("🔍 [{}] SSE lines parsed: {:?}", server_name_clone, lines);
@@ -1695,27 +1700,44 @@ async fn discover_tools_via_sse(
                             // Accumulate data from this line
                             if let Some(json_part) = line.strip_prefix("data: ") {
                                 accumulated_data.push_str(json_part);
-                                println!("🔍 [{}] Accumulated {} bytes of data", server_name_clone, accumulated_data.len());
+                                println!(
+                                    "🔍 [{}] Accumulated {} bytes of data",
+                                    server_name_clone,
+                                    accumulated_data.len()
+                                );
                             }
                         } else if line.starts_with("data: ") {
                             // Handle standalone data lines without event prefix
                             println!("🔍 [{}] Found standalone data line: '{}'", server_name_clone, line);
                             if let Some(json_str) = line.strip_prefix("data: ") {
                                 accumulated_data = json_str.to_string();
-                                println!("🔍 [{}] Set accumulated data from standalone: {}", server_name_clone, accumulated_data);
+                                println!(
+                                    "🔍 [{}] Set accumulated data from standalone: {}",
+                                    server_name_clone, accumulated_data
+                                );
                             }
                         } else if line.trim().is_empty() && !accumulated_data.is_empty() {
                             // Empty line indicates end of SSE message, try to parse accumulated data
-                            println!("🔍 [{}] End of SSE message, attempting to parse {} bytes of JSON", server_name_clone, accumulated_data.len());
+                            println!(
+                                "🔍 [{}] End of SSE message, attempting to parse {} bytes of JSON",
+                                server_name_clone,
+                                accumulated_data.len()
+                            );
                             println!("🔍 [{}] Accumulated JSON: {}", server_name_clone, accumulated_data);
                             
                             if let Ok(response) = serde_json::from_str::<serde_json::Value>(&accumulated_data) {
-                                println!("📨 [{}] SSE response parsed successfully from accumulated data", server_name_clone);
+                                println!(
+                                    "📨 [{}] SSE response parsed successfully from accumulated data",
+                                    server_name_clone
+                                );
                                 let _ = tx_clone.send(response);
                                 accumulated_data.clear();
                                 in_data_section = false;
                             } else {
-                                println!("❌ [{}] Failed to parse accumulated JSON: {}", server_name_clone, accumulated_data);
+                                println!(
+                                    "❌ [{}] Failed to parse accumulated JSON: {}",
+                                    server_name_clone, accumulated_data
+                                );
                             }
                         } else {
                             println!("🔍 [{}] Skipping line: '{}'", server_name_clone, line);
@@ -2424,7 +2446,12 @@ async fn call_tool_via_sse(
             match chunk_result {
                 Ok(chunk) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
-                    println!("🔍 [{}] SSE chunk received ({} bytes):\n{}", server_name_clone, chunk.len(), chunk_str);
+                    println!(
+                        "🔍 [{}] SSE chunk received ({} bytes):\n{}",
+                        server_name_clone,
+                        chunk.len(),
+                        chunk_str
+                    );
                     
                     let lines: Vec<&str> = chunk_str.lines().collect();
                     println!("🔍 [{}] SSE lines parsed: {:?}", server_name_clone, lines);
@@ -2438,27 +2465,44 @@ async fn call_tool_via_sse(
                             // Accumulate data from this line
                             if let Some(json_part) = line.strip_prefix("data: ") {
                                 accumulated_data.push_str(json_part);
-                                println!("🔍 [{}] Accumulated {} bytes of data", server_name_clone, accumulated_data.len());
+                                println!(
+                                    "🔍 [{}] Accumulated {} bytes of data",
+                                    server_name_clone,
+                                    accumulated_data.len()
+                                );
                             }
                         } else if line.starts_with("data: ") {
                             // Handle standalone data lines without event prefix
                             println!("🔍 [{}] Found standalone data line: '{}'", server_name_clone, line);
                             if let Some(json_str) = line.strip_prefix("data: ") {
                                 accumulated_data = json_str.to_string();
-                                println!("🔍 [{}] Set accumulated data from standalone: {}", server_name_clone, accumulated_data);
+                                println!(
+                                    "🔍 [{}] Set accumulated data from standalone: {}",
+                                    server_name_clone, accumulated_data
+                                );
                             }
                         } else if line.trim().is_empty() && !accumulated_data.is_empty() {
                             // Empty line indicates end of SSE message, try to parse accumulated data
-                            println!("🔍 [{}] End of SSE message, attempting to parse {} bytes of JSON", server_name_clone, accumulated_data.len());
+                            println!(
+                                "🔍 [{}] End of SSE message, attempting to parse {} bytes of JSON",
+                                server_name_clone,
+                                accumulated_data.len()
+                            );
                             println!("🔍 [{}] Accumulated JSON: {}", server_name_clone, accumulated_data);
                             
                             if let Ok(response) = serde_json::from_str::<serde_json::Value>(&accumulated_data) {
-                                println!("📨 [{}] SSE response parsed successfully from accumulated data", server_name_clone);
+                                println!(
+                                    "📨 [{}] SSE response parsed successfully from accumulated data",
+                                    server_name_clone
+                                );
                                 let _ = tx_clone.send(response);
                                 accumulated_data.clear();
                                 in_data_section = false;
                             } else {
-                                println!("❌ [{}] Failed to parse accumulated JSON: {}", server_name_clone, accumulated_data);
+                                println!(
+                                    "❌ [{}] Failed to parse accumulated JSON: {}",
+                                    server_name_clone, accumulated_data
+                                );
                             }
                         } else {
                             println!("🔍 [{}] Skipping line: '{}'", server_name_clone, line);
