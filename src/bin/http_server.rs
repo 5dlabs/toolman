@@ -466,7 +466,7 @@ impl ServerConnectionPool {
             .write_all(request_msg.as_bytes())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to send request: {}", e))?;
-        
+
         // GROK'S FIX: Flush after write to ensure data is sent
         conn.stdin
             .flush()
@@ -489,7 +489,7 @@ impl ServerConnectionPool {
             .write_all(notification_msg.as_bytes())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to send notification: {}", e))?;
-            
+
         // GROK'S FIX: Flush after write to ensure data is sent
         conn.stdin
             .flush()
