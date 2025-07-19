@@ -724,7 +724,10 @@ impl BridgeState {
     /// Discover all available tools from all configured servers
     async fn discover_all_tools(&self) -> anyhow::Result<()> {
         let init_start = std::time::Instant::now();
-        println!("🔍 Initializing all configured servers and discovering tools at {:?}...", chrono::Utc::now().format("%H:%M:%S"));
+        println!(
+            "🔍 Initializing all configured servers and discovering tools at {:?}...",
+            chrono::Utc::now().format("%H:%M:%S")
+        );
 
         // Wait for Docker to be ready BEFORE initializing any servers (prevents race conditions)
         println!("🐳 Ensuring Docker daemon is ready before starting any servers...");
@@ -772,7 +775,11 @@ impl BridgeState {
 
             // Discover tools from the server (with timeout)
             println!("🔍 [{}] Reached tool discovery section", server_name);
-            println!("🔍 [{}] Starting tool discovery at {:?}...", server_name, chrono::Utc::now().format("%H:%M:%S"));
+            println!(
+                "🔍 [{}] Starting tool discovery at {:?}...",
+                server_name,
+                chrono::Utc::now().format("%H:%M:%S")
+            );
             let discovery_start = std::time::Instant::now();
             let discovery_timeout = tokio::time::Duration::from_secs(45);
             match tokio::time::timeout(
@@ -783,7 +790,12 @@ impl BridgeState {
             {
                 Ok(Ok(tools)) => {
                     let elapsed = discovery_start.elapsed();
-                    println!("✅ [{}] Discovered {} tools in {:.2}s", server_name, tools.len(), elapsed.as_secs_f64());
+                    println!(
+                        "✅ [{}] Discovered {} tools in {:.2}s",
+                        server_name,
+                        tools.len(),
+                        elapsed.as_secs_f64()
+                    );
                     for tool in &tools {
                         println!("  📎 [{}] Tool: {}", server_name, tool.name);
                     }
@@ -794,7 +806,12 @@ impl BridgeState {
                 }
                 Ok(Err(e)) => {
                     let elapsed = discovery_start.elapsed();
-                    eprintln!("⚠️ [{}] Failed to discover tools after {:.2}s: {}", server_name, elapsed.as_secs_f64(), e);
+                    eprintln!(
+                        "⚠️ [{}] Failed to discover tools after {:.2}s: {}",
+                        server_name,
+                        elapsed.as_secs_f64(),
+                        e
+                    );
                 }
                 Err(_) => {
                     eprintln!("⚠️ [{}] Tool discovery timed out after 45s", server_name);
