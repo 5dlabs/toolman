@@ -728,27 +728,34 @@ impl BridgeState {
             current_working_dir: Arc::new(RwLock::new(None)),
         };
 
-        // Discover all available tools at startup
-        let state_clone = state.clone();
-        tokio::spawn(async move {
-            if let Err(e) = state_clone.discover_all_tools().await {
-                eprintln!("❌ Failed to discover tools at startup: {}", e);
-            }
-        });
-
         Ok(state)
     }
 
     /// Discover all available tools from all configured servers
     async fn discover_all_tools(&self) -> anyhow::Result<()> {
-        println!("🔍 Discovering all available tools from configured servers...");
+        println!("🔍 Initializing all configured servers and discovering tools...");
 
         let config_manager = self.system_config_manager.read().await;
         let servers = config_manager.get_servers();
         let mut all_tools = HashMap::new();
 
         for (server_name, config) in servers.iter() {
-            println!("🔍 Discovering tools from server: {}", server_name);
+            println!("🔍 Initializing server: {}", server_name);
+            
+            // For stdio servers, initialize them permanently
+            if config.transport == "stdio" {
+                match self.connection_pool.start_server(server_name).await {
+                    Ok(_) => {
+                        println!("✅ [{}] Server initialized successfully", server_name);
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
+                        continue;
+                    }
+                }
+            }
+            
+            // Discover tools from the server
             match self.discover_server_tools(server_name, config).await {
                 Ok(tools) => {
                     println!(
@@ -2373,9 +2380,13 @@ async fn main() -> Result<()> {
 
     let state = BridgeState::new(project_dir)?;
 
-    // Give the tool discovery a moment to start
-    // In production, you might want to wait for discovery to complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    // Discover all available tools and initialize servers at startup
+    println!("🔄 Initializing all MCP servers...");
+    if let Err(e) = state.discover_all_tools().await {
+        eprintln!("❌ Failed to discover tools at startup: {}", e);
+        return Err(e);
+    }
+    println!("✅ All MCP servers initialized and ready");
 
     let app = Router::new()
         .route("/mcp", post(mcp_endpoint))
