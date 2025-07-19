@@ -1697,8 +1697,11 @@ async fn discover_tools_via_sse(
                             in_data_section = true;
                             accumulated_data.clear();
                         } else if line.starts_with("data: ") && in_data_section {
-                            // Accumulate data from this line
+                            // Accumulate data from this line (multiple data lines should be joined with newlines)
                             if let Some(json_part) = line.strip_prefix("data: ") {
+                                if !accumulated_data.is_empty() {
+                                    accumulated_data.push('\n');
+                                }
                                 accumulated_data.push_str(json_part);
                                 println!(
                                     "🔍 [{}] Accumulated {} bytes of data",
@@ -1725,19 +1728,26 @@ async fn discover_tools_via_sse(
                             );
                             println!("🔍 [{}] Accumulated JSON: {}", server_name_clone, accumulated_data);
                             
-                            if let Ok(response) = serde_json::from_str::<serde_json::Value>(&accumulated_data) {
-                                println!(
-                                    "📨 [{}] SSE response parsed successfully from accumulated data",
-                                    server_name_clone
-                                );
-                                let _ = tx_clone.send(response);
-                                accumulated_data.clear();
-                                in_data_section = false;
-                            } else {
-                                println!(
-                                    "❌ [{}] Failed to parse accumulated JSON: {}",
-                                    server_name_clone, accumulated_data
-                                );
+                            match serde_json::from_str::<serde_json::Value>(&accumulated_data) {
+                                Ok(response) => {
+                                    println!(
+                                        "📨 [{}] SSE response parsed successfully from accumulated data",
+                                        server_name_clone
+                                    );
+                                    let _ = tx_clone.send(response);
+                                    accumulated_data.clear();
+                                    in_data_section = false;
+                                },
+                                Err(e) => {
+                                    println!(
+                                        "❌ [{}] Failed to parse accumulated JSON: {} (error: {})",
+                                        server_name_clone, accumulated_data, e
+                                    );
+                                    println!(
+                                        "🔍 [{}] JSON bytes: {:?}",
+                                        server_name_clone, accumulated_data.as_bytes()
+                                    );
+                                }
                             }
                         } else {
                             println!("🔍 [{}] Skipping line: '{}'", server_name_clone, line);
@@ -1747,6 +1757,30 @@ async fn discover_tools_via_sse(
                 Err(e) => {
                     println!("❌ [{}] SSE stream error: {}", server_name_clone, e);
                     break;
+                }
+            }
+        }
+        
+        // Stream ended - try to parse any remaining accumulated data
+        if !accumulated_data.is_empty() {
+            println!(
+                "🔍 [{}] Stream ended with {} bytes of accumulated data, attempting final parse",
+                server_name_clone,
+                accumulated_data.len()
+            );
+            match serde_json::from_str::<serde_json::Value>(&accumulated_data) {
+                Ok(response) => {
+                    println!(
+                        "📨 [{}] Final SSE response parsed successfully from accumulated data",
+                        server_name_clone
+                    );
+                    let _ = tx_clone.send(response);
+                },
+                Err(e) => {
+                    println!(
+                        "❌ [{}] Failed to parse final accumulated JSON: {} (error: {})",
+                        server_name_clone, accumulated_data, e
+                    );
                 }
             }
         }
@@ -2462,8 +2496,11 @@ async fn call_tool_via_sse(
                             in_data_section = true;
                             accumulated_data.clear();
                         } else if line.starts_with("data: ") && in_data_section {
-                            // Accumulate data from this line
+                            // Accumulate data from this line (multiple data lines should be joined with newlines)
                             if let Some(json_part) = line.strip_prefix("data: ") {
+                                if !accumulated_data.is_empty() {
+                                    accumulated_data.push('\n');
+                                }
                                 accumulated_data.push_str(json_part);
                                 println!(
                                     "🔍 [{}] Accumulated {} bytes of data",
@@ -2490,19 +2527,26 @@ async fn call_tool_via_sse(
                             );
                             println!("🔍 [{}] Accumulated JSON: {}", server_name_clone, accumulated_data);
                             
-                            if let Ok(response) = serde_json::from_str::<serde_json::Value>(&accumulated_data) {
-                                println!(
-                                    "📨 [{}] SSE response parsed successfully from accumulated data",
-                                    server_name_clone
-                                );
-                                let _ = tx_clone.send(response);
-                                accumulated_data.clear();
-                                in_data_section = false;
-                            } else {
-                                println!(
-                                    "❌ [{}] Failed to parse accumulated JSON: {}",
-                                    server_name_clone, accumulated_data
-                                );
+                            match serde_json::from_str::<serde_json::Value>(&accumulated_data) {
+                                Ok(response) => {
+                                    println!(
+                                        "📨 [{}] SSE response parsed successfully from accumulated data",
+                                        server_name_clone
+                                    );
+                                    let _ = tx_clone.send(response);
+                                    accumulated_data.clear();
+                                    in_data_section = false;
+                                },
+                                Err(e) => {
+                                    println!(
+                                        "❌ [{}] Failed to parse accumulated JSON: {} (error: {})",
+                                        server_name_clone, accumulated_data, e
+                                    );
+                                    println!(
+                                        "🔍 [{}] JSON bytes: {:?}",
+                                        server_name_clone, accumulated_data.as_bytes()
+                                    );
+                                }
                             }
                         } else {
                             println!("🔍 [{}] Skipping line: '{}'", server_name_clone, line);
@@ -2512,6 +2556,30 @@ async fn call_tool_via_sse(
                 Err(e) => {
                     println!("❌ [{}] SSE stream error: {}", server_name_clone, e);
                     break;
+                }
+            }
+        }
+        
+        // Stream ended - try to parse any remaining accumulated data
+        if !accumulated_data.is_empty() {
+            println!(
+                "🔍 [{}] Stream ended with {} bytes of accumulated data, attempting final parse",
+                server_name_clone,
+                accumulated_data.len()
+            );
+            match serde_json::from_str::<serde_json::Value>(&accumulated_data) {
+                Ok(response) => {
+                    println!(
+                        "📨 [{}] Final SSE response parsed successfully from accumulated data",
+                        server_name_clone
+                    );
+                    let _ = tx_clone.send(response);
+                },
+                Err(e) => {
+                    println!(
+                        "❌ [{}] Failed to parse final accumulated JSON: {} (error: {})",
+                        server_name_clone, accumulated_data, e
+                    );
                 }
             }
         }
