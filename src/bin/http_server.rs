@@ -1744,6 +1744,15 @@ async fn discover_tools_via_sse(
                                     );
                                 }
                             }
+                        } else if in_data_section && !line.trim().is_empty() {
+                            // This might be a continuation of the previous data line that got split across chunks
+                            println!("🔍 [{}] Found continuation line in data section: '{}'", server_name_clone, line);
+                            accumulated_data.push_str(line);
+                            println!(
+                                "🔍 [{}] Accumulated {} bytes after continuation",
+                                server_name_clone,
+                                accumulated_data.len()
+                            );
                         } else {
                             println!("🔍 [{}] Skipping line: '{}'", server_name_clone, line);
                         }
@@ -2550,6 +2559,15 @@ async fn call_tool_via_sse(
                                     );
                                 }
                             }
+                        } else if in_data_section && !line.trim().is_empty() {
+                            // This might be a continuation of the previous data line that got split across chunks
+                            println!("🔍 [{}] Found continuation line in data section: '{}'", server_name_clone, line);
+                            accumulated_data.push_str(line);
+                            println!(
+                                "🔍 [{}] Accumulated {} bytes after continuation",
+                                server_name_clone,
+                                accumulated_data.len()
+                            );
                         } else {
                             println!("🔍 [{}] Skipping line: '{}'", server_name_clone, line);
                         }
