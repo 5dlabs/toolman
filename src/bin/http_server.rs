@@ -259,17 +259,28 @@ impl ServerConnectionPool {
         server_name: &str,
         _user_working_dir: Option<&std::path::Path>,
     ) -> anyhow::Result<()> {
-        // Check if server is already connected
-        let connections = self.connections.read().await;
-        if connections.contains_key(server_name) {
-            println!("🔗 Server '{}' is already connected", server_name);
-            return Ok(());
-        }
+        // Check if server is already connected (scoped read lock)
+        {
+            let connections = self.connections.read().await;
+            if connections.contains_key(server_name) {
+                println!("🔗 Server '{}' is already connected", server_name);
+                return Ok(());
+            }
+        } // Read lock automatically dropped here
 
-        let servers = self.config_manager.read().await;
-        let config = servers.get_servers().get(server_name).ok_or_else(|| {
-            anyhow::anyhow!("Server '{}' not found in configuration", server_name)
-        })?;
+        // Get server config and project directory (scoped read lock)
+        let (config, project_dir) = {
+            let servers = self.config_manager.read().await;
+            let config = servers.get_servers().get(server_name).ok_or_else(|| {
+                anyhow::anyhow!("Server '{}' not found in configuration", server_name)
+            })?.clone(); // Clone to avoid borrowing across await points
+            let project_dir = servers
+                .get_config_path()
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_path_buf();
+            (config, project_dir)
+        }; // Read lock automatically dropped here
 
         // Docker readiness is now checked once at startup, so we can proceed directly
 
@@ -286,15 +297,11 @@ impl ServerConnectionPool {
             .stderr(Stdio::piped());
 
         // Set working directory (default to project directory if not specified)
-        let project_dir = servers
-            .get_config_path()
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
         let working_dir = config
             .working_directory
             .as_ref()
-            .map(|wd| resolve_working_directory(wd, project_dir))
-            .unwrap_or_else(|| project_dir.to_path_buf());
+            .map(|wd| resolve_working_directory(wd, &project_dir))
+            .unwrap_or_else(|| project_dir.clone());
         cmd.current_dir(&working_dir);
         println!(
             "🔍 [{}] Setting working directory: {}",
@@ -306,12 +313,8 @@ impl ServerConnectionPool {
         cmd.envs(std::env::vars());
 
         // Process environment variables with template substitution
-        let project_dir = servers
-            .get_config_path()
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
         let template_context = TemplateContext::new(
-            project_dir.to_path_buf(),
+            project_dir.clone(),
             working_dir.clone(),
             server_name.to_string(),
         );
@@ -366,13 +369,22 @@ impl ServerConnectionPool {
                 "🔄 [{}] Attempting to acquire write lock on connections...",
                 server_name
             );
+            
+            // Check if there are any active read locks by trying a try_read first
+            if let Ok(read_guard) = self.connections.try_read() {
+                println!("🔍 [{}] No read locks detected, {} connections exist", server_name, read_guard.len());
+                drop(read_guard);
+            } else {
+                println!("⚠️ [{}] Read locks are active - this will cause write lock to block!", server_name);
+            }
+            
             let mut connections = tokio::time::timeout(
-                tokio::time::Duration::from_secs(30), // Increased timeout
+                tokio::time::Duration::from_secs(5), // Reduced timeout for faster debugging
                 self.connections.write(),
             )
             .await
             .map_err(|_| {
-                anyhow::anyhow!("DEADLOCK: Timeout acquiring write lock on connections after 30s - read locks may be blocking")
+                anyhow::anyhow!("DEADLOCK: Timeout acquiring write lock on connections after 5s - read locks may be blocking")
             })?;
 
             println!("🔄 [{}] Acquired write lock on connections", server_name);
@@ -799,13 +811,18 @@ impl BridgeState {
             );
         }
 
-        let config_manager = self.system_config_manager.read().await;
-        let servers = config_manager.get_servers();
+        // CRITICAL: Scope the read lock to prevent deadlock with write locks during server initialization
+        let server_list = {
+            let config_manager = self.system_config_manager.read().await;
+            let servers = config_manager.get_servers();
+            
+            // Process servers in deterministic order for consistent behavior
+            let mut server_list: Vec<_> = servers.iter().map(|(name, config)| (name.clone(), config.clone())).collect();
+            server_list.sort_by_key(|(name, _)| name.clone());
+            server_list
+        }; // Read lock automatically dropped here
+        
         let mut all_tools = HashMap::new();
-
-        // Process servers in deterministic order for consistent behavior
-        let mut server_list: Vec<_> = servers.iter().collect();
-        server_list.sort_by_key(|(name, _)| *name);
 
         for (server_name, config) in server_list {
             println!(
@@ -819,7 +836,7 @@ impl BridgeState {
                 println!("🔄 [{}] Initializing stdio server...", server_name);
 
                 // Initialize the server - MUST complete fully before tool discovery
-                match self.connection_pool.start_server(server_name).await {
+                match self.connection_pool.start_server(&server_name).await {
                     Ok(_) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
 
@@ -855,7 +872,7 @@ impl BridgeState {
             let discovery_timeout = tokio::time::Duration::from_secs(45);
             match tokio::time::timeout(
                 discovery_timeout,
-                self.discover_server_tools(server_name, config),
+                self.discover_server_tools(&server_name, &config),
             )
             .await
             {
