@@ -813,24 +813,24 @@ impl BridgeState {
         for (server_name, config) in servers.iter() {
             println!("🔍 Discovering tools from server: {}", server_name);
             match self.discover_server_tools(server_name, config).await {
-                    Ok(tools) => {
-                        println!(
-                            "✅ Discovered {} tools from server '{}'",
-                            tools.len(),
-                            server_name
-                        );
-                        for tool in tools {
-                            let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
-                            all_tools.insert(prefixed_name, tool);
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "⚠️ Failed to discover tools from server '{}': {}",
-                            server_name, e
-                        );
+                Ok(tools) => {
+                    println!(
+                        "✅ Discovered {} tools from server '{}'",
+                        tools.len(),
+                        server_name
+                    );
+                    for tool in tools {
+                        let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
+                        all_tools.insert(prefixed_name, tool);
                     }
                 }
+                Err(e) => {
+                    eprintln!(
+                        "⚠️ Failed to discover tools from server '{}': {}",
+                        server_name, e
+                    );
+                }
+            }
         }
 
         // Store discovered tools
@@ -2289,7 +2289,9 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Default project_dir to current directory if not specified
-    let project_dir = args.project_dir.or_else(|| Some(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))));
+    let project_dir = args.project_dir.or_else(|| {
+        Some(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
+    });
 
     // Handle export-tools flag - discover tools and export to file, then exit
     if let Some(export_path) = args.export_tools {
