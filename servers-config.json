@@ -27,8 +27,9 @@
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "-v", "/Users/jonathonfritz/talos/kubeconfig:/home/appuser/.kube/config:ro",
+        "-v", "{{working_dir}}/.kube:/home/appuser/.kube:ro",
         "-e", "SERVER_MODE=stdio",
+        "-e", "KUBECONFIG=/home/appuser/.kube/config",
         "ginnux/k8s-mcp-server:latest"
       ],
       "env": {},

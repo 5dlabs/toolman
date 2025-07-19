@@ -9,7 +9,9 @@
     "kubernetes_listResources",
     "kubernetes_getResource",
     "solana_search",
-    "rustdocs_query_rust_docs"
+    "rustdocs_query_rust_docs",
+    "terraform_searchModules",
+    "terraform_moduleDetails"
   ],
   "localServers": {
     "filesystem": {

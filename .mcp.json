@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "toolman": {
+      "type": "stdio",
+      "command": "/Users/jonathonfritz/.local/bin/toolman-client",
+      "args": [
+        "--working-dir",
+        "/Users/jonathonfritz/mcp-proxy"
+      ],
+      "env": {}
+    }
+  }
+}
