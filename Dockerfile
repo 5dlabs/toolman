@@ -30,14 +30,23 @@ RUN apt-get update && apt-get install -y \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
+# Install kubectl separately
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl" && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm kubectl
+
 # Create symbolic links for Python
 RUN ln -sf python3 /usr/bin/python
 
-# Install UV for Python package management
+# Install Python MCP packages
+RUN pip3 install --no-cache-dir universal-mcp-reddit praw
+
+# Install UV and uvx for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
     mv /root/.local/bin/uv /usr/local/bin/ 2>/dev/null || \
     mv /root/.cargo/bin/uv /usr/local/bin/ 2>/dev/null || \
-    echo "UV installed successfully"
+    echo "UV installed successfully" && \
+    ln -sf /usr/local/bin/uv /usr/local/bin/uvx
 
 # Install minimal Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal

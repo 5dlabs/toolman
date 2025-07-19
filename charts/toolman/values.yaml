@@ -86,7 +86,7 @@ resources:
 #   httpGet:
 #     path: /ready
 #     port: http
-#   initialDelaySeconds: 90   # Give time for all servers to initialize 
+#   initialDelaySeconds: 90   # Give time for all servers to initialize
 #   periodSeconds: 10
 #   timeoutSeconds: 5
 #   failureThreshold: 5
@@ -156,7 +156,7 @@ config:
         name: "toolman-brave-search-secrets"
         keys:
           - "BRAVE_API_KEY"
-    
+
     memory:
       name: "Memory"
       description: "Persistent memory and knowledge graph for long-term information retention"
@@ -165,8 +165,8 @@ config:
       args: ["-y", "@modelcontextprotocol/server-memory"]
       workingDirectory: "project_root"
       env:
-        MEMORY_FILE_PATH: "{{working_dir}}/memory.json"
-    
+        MEMORY_FILE_PATH: "/home/mcp/memory.json"
+
     terraform:
       name: "Terraform"
       description: "Terraform Registry API integration"
@@ -174,40 +174,42 @@ config:
       command: "docker"
       args: ["run", "-i", "--rm", "hashicorp/terraform-mcp-server"]
       workingDirectory: "project_root"
-    
+
     kubernetes:
       name: "Kubernetes"
       description: "Kubernetes cluster management and Helm operations"
-      transport: "stdio"
-      command: "docker"
-      args: [
-        "run", "--rm", "-i",
-        "-v", "/data/.kube:/home/appuser/.kube:ro",
-        "-e", "SERVER_MODE=stdio",
-        "-e", "KUBECONFIG=/home/appuser/.kube/config",
-        "ginnux/k8s-mcp-server:latest",
-        "--mode", "stdio"
-      ]
+      transport: "sse"
+      url: "http://k8s-mcp-k8s-mcp-server.mcp.svc.cluster.local:8080/sse"
       workingDirectory: "project_root"
-      secretRef:
-        name: "toolman-kubernetes-secrets"
-        keys:
-          - "KUBECONFIG"
-      # Note: Uses published Docker image ginnux/k8s-mcp-server
+      # Note: Uses k8s-mcp-server SSE service endpoint
     solana:
       name: "Solana"
       description: "Solana blockchain development tools"
       transport: "http"
       url: "https://mcp.solana.com/mcp"
       workingDirectory: "project_root"
-    
+
     rustdocs:
       name: "Rust Docs"
       description: "Rust documentation MCP server"
       transport: "sse"
       url: "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/sse"
       workingDirectory: "project_root"
-    
+
+    reddit:
+      name: "Reddit"
+      description: "Reddit content fetching and analysis via uvx"
+      transport: "stdio"
+      command: "uvx"
+      args: ["--from", "git+https://github.com/adhikasp/mcp-reddit.git", "mcp-reddit"]
+      workingDirectory: "project_root"
+      secretRef:
+        name: "toolman-reddit-secrets"
+        keys:
+          - "REDDIT_CLIENT_ID"
+          - "REDDIT_CLIENT_SECRET"
+          - "REDDIT_USERNAME"
+          - "REDDIT_PASSWORD"
 
 # Persistence for temporary files and caches
 persistence:
