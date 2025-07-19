@@ -20,7 +20,7 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-brave-search"],
       "env": {},
-      "enabled": false,
+      "enabled": true,
       "alwaysActive": false,
       "autoStart": true,
       "workingDirectory": "project_root",

@@ -596,10 +596,10 @@ impl ServerConnectionPool {
                 // Create HTTP client if not exists
                 let client = reqwest::Client::new();
 
-                // Check if this is an rmcp SSE endpoint (URL ends with /sse)
+                // Check if this is an SSE endpoint (URL ends with /sse)
                 if url.ends_with("/sse") {
-                    // Use rmcp SSE bidirectional communication
-                    return call_tool_via_rmcp_sse(&client, server_name, url, tool_name, arguments)
+                    // Use SSE bidirectional communication
+                    return call_tool_via_sse(&client, server_name, url, tool_name, arguments)
                         .await;
                 } else {
                     // Direct HTTP endpoint (like Solana)
@@ -967,13 +967,13 @@ impl BridgeState {
                 // Handle SSE vs HTTP endpoints differently
                 if url.ends_with("/sse") {
                     println!(
-                        "🔄 [{}] SSE endpoint detected - using proper rmcp SSE transport",
+                        "🔄 [{}] SSE endpoint detected - using SSE transport",
                         server_name
                     );
 
                     // For SSE endpoints, we need to handle the full MCP handshake
                     // with responses coming through the SSE stream
-                    return discover_tools_via_rmcp_sse(&client, server_name, url, &session_id)
+                    return discover_tools_via_sse(&client, server_name, url, &session_id)
                         .await;
                 }
 
@@ -1378,12 +1378,8 @@ impl BridgeState {
             start_time.elapsed()
         );
 
-        // Increase timeout for servers that may take longer to initialize
-        let timeout_secs = match server_name {
-            "git" | "github" => 30, // Git and GitHub servers may take longer
-            "docs-service" | "task-master-ai" => 20, // Document scanning servers need more time
-            _ => 15,                // Default timeout
-        };
+        // Use configurable timeout or default
+        let timeout_secs = 30; // Default timeout for all servers
         println!(
             "🔍 [{}] Using timeout of {} seconds for initialization",
             server_name, timeout_secs
@@ -1699,8 +1695,8 @@ impl BridgeState {
     }
 }
 
-/// Discover tools from rmcp SSE server with proper bidirectional transport
-async fn discover_tools_via_rmcp_sse(
+/// Discover tools from SSE server with bidirectional transport
+async fn discover_tools_via_sse(
     client: &reqwest::Client,
     server_name: &str,
     sse_url: &str,
@@ -1709,7 +1705,7 @@ async fn discover_tools_via_rmcp_sse(
     use futures::StreamExt;
     use tokio::time::{timeout, Duration};
 
-    println!("🚀 [{}] Starting rmcp SSE tool discovery", server_name);
+    println!("🚀 [{}] Starting SSE tool discovery", server_name);
 
     // Step 1: Open SSE connection and get session ID
     let sse_response = client
@@ -1749,7 +1745,7 @@ async fn discover_tools_via_rmcp_sse(
     };
 
     println!(
-        "✅ [{}] Got rmcp SSE session ID: {}",
+        "✅ [{}] Got SSE session ID: {}",
         server_name, session_id
     );
 
@@ -1906,7 +1902,7 @@ async fn discover_tools_via_rmcp_sse(
     };
 
     println!(
-        "✅ [{}] Discovered {} tools via rmcp SSE",
+        "✅ [{}] Discovered {} tools via SSE",
         server_name,
         tools.len()
     );
@@ -2397,8 +2393,8 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Call a tool via rmcp SSE transport with bidirectional communication
-async fn call_tool_via_rmcp_sse(
+/// Call a tool via SSE transport with bidirectional communication
+async fn call_tool_via_sse(
     client: &reqwest::Client,
     server_name: &str,
     sse_url: &str,
@@ -2409,7 +2405,7 @@ async fn call_tool_via_rmcp_sse(
     use tokio::time::{timeout, Duration};
 
     println!(
-        "🚀 [{}] Starting rmcp SSE tool call: {}",
+        "🚀 [{}] Starting SSE tool call: {}",
         server_name, tool_name
     );
 
@@ -2451,7 +2447,7 @@ async fn call_tool_via_rmcp_sse(
     };
 
     println!(
-        "✅ [{}] Got rmcp SSE session ID: {}",
+        "✅ [{}] Got SSE session ID: {}",
         server_name, session_id
     );
 
@@ -2589,7 +2585,8 @@ async fn call_tool_via_rmcp_sse(
     }
 
     // Step 6: Wait for tool call response via SSE
-    let tool_response = match timeout(Duration::from_secs(30), rx.recv()).await {
+    let timeout_secs = 120; // Generous timeout for all tool calls
+    let tool_response = match timeout(Duration::from_secs(timeout_secs), rx.recv()).await {
         Ok(Some(response)) => response,
         Ok(None) => return Err(anyhow::anyhow!("SSE channel closed during tool call")),
         Err(_) => return Err(anyhow::anyhow!("Timeout waiting for tool call response")),
