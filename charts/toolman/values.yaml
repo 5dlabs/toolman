@@ -164,7 +164,7 @@ config:
       args: ["-y", "@modelcontextprotocol/server-memory"]
       workingDirectory: "project_root"
       env:
-        MEMORY_FILE_PATH: "/data/memory.json"
+        MEMORY_FILE_PATH: "{{working_dir}}/memory.json"
     
     terraform:
       name: "Terraform"
@@ -202,7 +202,7 @@ config:
     rustdocs:
       name: "Rust Docs"
       description: "Rust documentation MCP server"
-      transport: "http"
+      transport: "sse"
       url: "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/sse"
       workingDirectory: "project_root"
     

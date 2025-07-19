@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use toolman::config::{TemplateContext, process_env_templates};
 use tokio::sync::RwLock;
 use toolman::config::{ServerConfig, SystemConfigManager as ConfigManager};
 use toolman::resolve_working_directory;
@@ -169,6 +170,7 @@ use tokio::sync::Mutex;
 
 #[derive(Debug)]
 struct McpServerConnection {
+    #[allow(dead_code)]
     process: Child,
     stdin: tokio::process::ChildStdin,
     stdout_reader: BufReader<tokio::process::ChildStdout>,
@@ -255,22 +257,13 @@ impl ServerConnectionPool {
     async fn start_server_with_context(
         &self,
         server_name: &str,
-        user_working_dir: Option<&std::path::Path>,
+        _user_working_dir: Option<&std::path::Path>,
     ) -> anyhow::Result<()> {
-        // For filesystem server, always restart with new context to ensure correct allowed directories
-        if server_name == "filesystem" {
-            println!(
-                "🔄 Restarting filesystem server with user context: {:?}",
-                user_working_dir
-            );
-            let _ = self.stop_server(server_name).await; // Stop existing server if any
-        } else {
-            // Check if server is already connected for non-filesystem servers
-            let connections = self.connections.read().await;
-            if connections.contains_key(server_name) {
-                println!("🔗 Server '{}' is already connected", server_name);
-                return Ok(());
-            }
+        // Check if server is already connected
+        let connections = self.connections.read().await;
+        if connections.contains_key(server_name) {
+            println!("🔗 Server '{}' is already connected", server_name);
+            return Ok(());
         }
 
         let servers = self.config_manager.read().await;
@@ -295,27 +288,8 @@ impl ServerConnectionPool {
         // Spawn the server process
         let mut cmd = Command::new(&config.command);
 
-        // For filesystem server, override args to use user's working directory
-        if server_name == "filesystem" && user_working_dir.is_some() {
-            let user_dir = user_working_dir.unwrap();
-            println!(
-                "📁 [{}] Using user working directory for filesystem server: {}",
-                server_name,
-                user_dir.display()
-            );
-
-            // Build filesystem-specific args: npx -y @modelcontextprotocol/server-filesystem <user_working_dir>
-            let fs_args = vec![
-                "-y".to_string(),
-                "@modelcontextprotocol/server-filesystem".to_string(),
-                user_dir.to_string_lossy().to_string(),
-            ];
-
-            cmd.args(&fs_args);
-        } else {
-            // Use original config args for all other servers
-            cmd.args(&config.args);
-        }
+        // Use configured args for all servers
+        cmd.args(&config.args);
 
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -341,61 +315,28 @@ impl ServerConnectionPool {
         // Inherit all environment variables from parent process
         cmd.envs(std::env::vars());
 
+        // Process environment variables with template substitution
+        let project_dir = servers
+            .get_config_path()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let template_context = TemplateContext::new(
+            project_dir.to_path_buf(),
+            working_dir.clone(),
+            server_name.to_string(),
+        );
+        let processed_env = process_env_templates(&config.env, &template_context);
+        
         // Add/override with server-specific environment variables
-        for (key, value) in &config.env {
+        for (key, value) in &processed_env {
             cmd.env(key, value);
-        }
-
-        // 🎯 EDGE CASE HANDLING: Inject working directory for specific servers
-        // Hard-coded for internal use - will make configurable later
-        match server_name {
-            "memory" => {
-                // Memory server needs MEMORY_FILE_PATH set to project directory
-                let memory_file = working_dir.join("memory.json");
-                cmd.env(
-                    "MEMORY_FILE_PATH",
-                    memory_file.to_string_lossy().to_string(),
-                );
+            if !value.is_empty() {
                 println!(
-                    "🧠 [{}] Setting MEMORY_FILE_PATH: {}",
+                    "🔧 [{}] Setting env {}={}",
                     server_name,
-                    memory_file.display()
+                    key,
+                    value
                 );
-            }
-            "docs-manager" | "mcp-docs-service" => {
-                // MCP Docs service - set default docs directory
-                let docs_dir = working_dir.join("docs");
-                cmd.env("MCP_DOCS_ROOT", docs_dir.to_string_lossy().to_string());
-                println!(
-                    "📚 [{}] Setting MCP_DOCS_ROOT: {}",
-                    server_name,
-                    docs_dir.display()
-                );
-                // TODO: Modify command args to include docs path as well
-            }
-            "filesystem" => {
-                // Filesystem server uses command-line args, not environment variables
-                // Args are handled above in the filesystem-specific section
-                println!(
-                    "📁 [{}] Filesystem server configured via command-line args",
-                    server_name
-                );
-            }
-            name if name.contains("file") || name.contains("docs") || name.contains("storage") => {
-                // Generic file-related servers - set working directory env var
-                cmd.env(
-                    "WORKING_DIRECTORY",
-                    working_dir.to_string_lossy().to_string(),
-                );
-                cmd.env("PROJECT_DIR", working_dir.to_string_lossy().to_string());
-                println!(
-                    "📂 [{}] Setting PROJECT_DIR and WORKING_DIRECTORY: {}",
-                    server_name,
-                    working_dir.display()
-                );
-            }
-            _ => {
-                // No special handling needed for this server
             }
         }
 
@@ -588,16 +529,16 @@ impl ServerConnectionPool {
             .get(server_name)
             .ok_or_else(|| anyhow::anyhow!("Server '{}' not found", server_name))?;
 
-        // Handle HTTP transport
-        if server_config.transport == "http" {
+        // Handle HTTP and SSE transports
+        if server_config.transport == "http" || server_config.transport == "sse" {
             if let Some(url) = &server_config.url {
                 println!("🌐 Forwarding HTTP request to: {}", url);
 
                 // Create HTTP client if not exists
                 let client = reqwest::Client::new();
 
-                // Check if this is an SSE endpoint (URL ends with /sse)
-                if url.ends_with("/sse") {
+                // Use transport type to determine communication method
+                if server_config.transport == "sse" {
                     // Use SSE bidirectional communication
                     return call_tool_via_sse(&client, server_name, url, tool_name, arguments)
                         .await;
@@ -656,8 +597,8 @@ impl ServerConnectionPool {
         }
 
         // Original stdio logic
-        // Start server if not already started, with user context for filesystem server
-        if server_name == "filesystem" && user_working_dir.is_some() {
+        // Start server if not already started
+        if user_working_dir.is_some() {
             self.start_server_with_context(server_name, user_working_dir)
                 .await?;
         } else {
@@ -707,6 +648,7 @@ impl ServerConnectionPool {
     }
 
     /// Stop a server connection
+    #[allow(dead_code)]
     async fn stop_server(&self, server_name: &str) -> anyhow::Result<()> {
         let connection = {
             let mut connections = self.connections.write().await;
@@ -857,8 +799,8 @@ impl BridgeState {
             chrono::Utc::now().format("%H:%M:%S")
         );
 
-        // Handle HTTP transport
-        if config.transport == "http" {
+        // Handle HTTP and SSE transports
+        if config.transport == "http" || config.transport == "sse" {
             if let Some(url) = &config.url {
                 println!(
                     "🌐 [{}] Discovering tools from HTTP server: {}",
@@ -867,15 +809,14 @@ impl BridgeState {
 
                 let client = reqwest::Client::new();
 
-                // Check if this is an SSE endpoint by trying to GET the URL
-                // Only try SSE detection if the URL ends with /sse
+                // Use transport type to determine communication method
                 println!(
-                    "🔍 [{}] URL: {}, ends_with(/sse): {}",
+                    "🔍 [{}] URL: {}, transport: {}",
                     server_name,
                     url,
-                    url.ends_with("/sse")
+                    config.transport
                 );
-                let (message_url, session_id) = if url.ends_with("/sse") {
+                let (message_url, session_id) = if config.transport == "sse" {
                     println!(
                         "🔄 [{}] Detected SSE endpoint, starting SSE handshake",
                         server_name
@@ -963,7 +904,7 @@ impl BridgeState {
                 println!("🎯 [{}] Final message_url: {}", server_name, message_url);
 
                 // Handle SSE vs HTTP endpoints differently
-                if url.ends_with("/sse") {
+                if config.transport == "sse" {
                     println!(
                         "🔄 [{}] SSE endpoint detected - using SSE transport",
                         server_name
@@ -1217,66 +1158,24 @@ impl BridgeState {
         // Inherit all environment variables from parent process
         cmd.envs(std::env::vars());
 
+        // Process environment variables with template substitution
+        let template_context = TemplateContext::new(
+            project_dir.to_path_buf(),
+            working_dir.clone(),
+            server_name.to_string(),
+        );
+        let processed_env = process_env_templates(&config.env, &template_context);
+        
         // Add/override with server-specific environment variables
-        for (key, value) in &config.env {
+        for (key, value) in &processed_env {
             cmd.env(key, value);
-            println!("🔍 [{}] Setting env: {}={}", server_name, key, value);
-        }
-
-        // 🎯 EDGE CASE HANDLING: Inject working directory for specific servers
-        // Hard-coded for internal use - will make configurable later
-        match server_name {
-            "memory" => {
-                // Memory server needs MEMORY_FILE_PATH set to project directory
-                let memory_file = working_dir.join("memory.json");
-                cmd.env(
-                    "MEMORY_FILE_PATH",
-                    memory_file.to_string_lossy().to_string(),
-                );
+            if !value.is_empty() {
                 println!(
-                    "🧠 [{}] Setting MEMORY_FILE_PATH: {}",
+                    "🔧 [{}] Setting env {}={}",
                     server_name,
-                    memory_file.display()
+                    key,
+                    value
                 );
-            }
-            "docs-manager" | "mcp-docs-service" => {
-                // MCP Docs service - set default docs directory
-                let docs_dir = working_dir.join("docs");
-                cmd.env("MCP_DOCS_ROOT", docs_dir.to_string_lossy().to_string());
-                println!(
-                    "📚 [{}] Setting MCP_DOCS_ROOT: {}",
-                    server_name,
-                    docs_dir.display()
-                );
-                // TODO: Modify command args to include docs path as well
-            }
-            "filesystem" => {
-                // Filesystem server - set allowed directory
-                cmd.env(
-                    "ALLOWED_DIRECTORY",
-                    working_dir.to_string_lossy().to_string(),
-                );
-                println!(
-                    "📁 [{}] Setting ALLOWED_DIRECTORY: {}",
-                    server_name,
-                    working_dir.display()
-                );
-            }
-            name if name.contains("file") || name.contains("docs") || name.contains("storage") => {
-                // Generic file-related servers - set working directory env var
-                cmd.env(
-                    "WORKING_DIRECTORY",
-                    working_dir.to_string_lossy().to_string(),
-                );
-                cmd.env("PROJECT_DIR", working_dir.to_string_lossy().to_string());
-                println!(
-                    "📂 [{}] Setting PROJECT_DIR and WORKING_DIRECTORY: {}",
-                    server_name,
-                    working_dir.display()
-                );
-            }
-            _ => {
-                // No special handling needed for this server
             }
         }
 

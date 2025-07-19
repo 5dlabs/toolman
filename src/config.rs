@@ -387,3 +387,48 @@ pub fn resolve_working_directory(working_dir: &str, project_dir: &std::path::Pat
         path => project_dir.join(path),                       // Relative to project directory
     }
 }
+
+/// Template context for variable substitution
+#[derive(Debug, Clone)]
+pub struct TemplateContext {
+    pub project_dir: PathBuf,
+    pub working_dir: PathBuf,
+    pub server_name: String,
+}
+
+impl TemplateContext {
+    pub fn new(project_dir: PathBuf, working_dir: PathBuf, server_name: String) -> Self {
+        Self {
+            project_dir,
+            working_dir,
+            server_name,
+        }
+    }
+}
+
+/// Substitute template variables in a string
+/// Supports: {{project_dir}}, {{working_dir}}, {{server_name}}
+pub fn substitute_template_variables(template: &str, context: &TemplateContext) -> String {
+    let mut result = template.to_string();
+    
+    // Replace template variables
+    result = result.replace("{{project_dir}}", &context.project_dir.to_string_lossy());
+    result = result.replace("{{working_dir}}", &context.working_dir.to_string_lossy());
+    result = result.replace("{{server_name}}", &context.server_name);
+    
+    result
+}
+
+/// Process environment variables with template substitution
+pub fn process_env_templates(
+    env: &HashMap<String, String>,
+    context: &TemplateContext,
+) -> HashMap<String, String> {
+    env.iter()
+        .map(|(key, value)| {
+            let processed_key = substitute_template_variables(key, context);
+            let processed_value = substitute_template_variables(value, context);
+            (processed_key, processed_value)
+        })
+        .collect()
+}
