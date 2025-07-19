@@ -744,34 +744,52 @@ impl BridgeState {
             
             // For stdio servers, initialize them permanently
             if config.transport == "stdio" {
-                match self.connection_pool.start_server(server_name).await {
-                    Ok(_) => {
+                println!("🔄 [{}] Initializing stdio server...", server_name);
+                
+                // Add timeout to prevent hanging
+                let timeout_duration = tokio::time::Duration::from_secs(30);
+                match tokio::time::timeout(timeout_duration, self.connection_pool.start_server(server_name)).await {
+                    Ok(Ok(_)) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
                         continue;
                     }
+                    Err(_) => {
+                        eprintln!("⚠️ [{}] Server initialization timed out after 30s", server_name);
+                        continue;
+                    }
                 }
+            } else {
+                println!("🔄 [{}] Skipping initialization for {} server", server_name, config.transport);
             }
             
-            // Discover tools from the server
-            match self.discover_server_tools(server_name, config).await {
-                Ok(tools) => {
+            // Discover tools from the server (with timeout)
+            println!("🔍 [{}] Discovering tools...", server_name);
+            let discovery_timeout = tokio::time::Duration::from_secs(45);
+            match tokio::time::timeout(discovery_timeout, self.discover_server_tools(server_name, config)).await {
+                Ok(Ok(tools)) => {
                     println!(
-                        "✅ Discovered {} tools from server '{}'",
-                        tools.len(),
-                        server_name
+                        "✅ [{}] Discovered {} tools",
+                        server_name,
+                        tools.len()
                     );
                     for tool in tools {
                         let prefixed_name = format!("{}_{}", tool.server_name, tool.name);
                         all_tools.insert(prefixed_name, tool);
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     eprintln!(
-                        "⚠️ Failed to discover tools from server '{}': {}",
+                        "⚠️ [{}] Failed to discover tools: {}",
                         server_name, e
+                    );
+                }
+                Err(_) => {
+                    eprintln!(
+                        "⚠️ [{}] Tool discovery timed out after 45s",
+                        server_name
                     );
                 }
             }
