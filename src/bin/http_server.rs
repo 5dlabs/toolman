@@ -973,8 +973,7 @@ impl BridgeState {
 
                     // For SSE endpoints, we need to handle the full MCP handshake
                     // with responses coming through the SSE stream
-                    return discover_tools_via_sse(&client, server_name, url, &session_id)
-                        .await;
+                    return discover_tools_via_sse(&client, server_name, url, &session_id).await;
                 }
 
                 // Non-SSE HTTP endpoint handling
@@ -1744,10 +1743,7 @@ async fn discover_tools_via_sse(
         Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
     };
 
-    println!(
-        "✅ [{}] Got SSE session ID: {}",
-        server_name, session_id
-    );
+    println!("✅ [{}] Got SSE session ID: {}", server_name, session_id);
 
     // Step 2: Prepare message endpoint
     let base_url = sse_url.trim_end_matches("/sse").trim_end_matches('/');
@@ -2404,10 +2400,7 @@ async fn call_tool_via_sse(
     use futures::StreamExt;
     use tokio::time::{timeout, Duration};
 
-    println!(
-        "🚀 [{}] Starting SSE tool call: {}",
-        server_name, tool_name
-    );
+    println!("🚀 [{}] Starting SSE tool call: {}", server_name, tool_name);
 
     // Step 1: Open SSE connection and get session ID
     let sse_response = client
@@ -2446,10 +2439,7 @@ async fn call_tool_via_sse(
         Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
     };
 
-    println!(
-        "✅ [{}] Got SSE session ID: {}",
-        server_name, session_id
-    );
+    println!("✅ [{}] Got SSE session ID: {}", server_name, session_id);
 
     // Step 2: Prepare message endpoint
     let base_url = sse_url.trim_end_matches("/sse").trim_end_matches('/');
