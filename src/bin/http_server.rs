@@ -750,30 +750,13 @@ impl BridgeState {
             if config.transport == "stdio" {
                 println!("🔄 [{}] Initializing stdio server...", server_name);
 
-                // Add timeout to prevent hanging (longer for npm-based servers)
-                let timeout_duration = if config.command == "npx" {
-                    tokio::time::Duration::from_secs(60) // NPM downloads can be slow
-                } else {
-                    tokio::time::Duration::from_secs(30)
-                };
-                match tokio::time::timeout(
-                    timeout_duration,
-                    self.connection_pool.start_server(server_name),
-                )
-                .await
-                {
-                    Ok(Ok(_)) => {
+                // Initialize the server (no timeout wrapper - tool discovery has its own timeout)
+                match self.connection_pool.start_server(server_name).await {
+                    Ok(_) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
                     }
-                    Ok(Err(e)) => {
+                    Err(e) => {
                         eprintln!("⚠️ [{}] Failed to initialize server: {}", server_name, e);
-                        continue;
-                    }
-                    Err(_) => {
-                        eprintln!(
-                            "⚠️ [{}] Server initialization timed out after 30s",
-                            server_name
-                        );
                         continue;
                     }
                 }
