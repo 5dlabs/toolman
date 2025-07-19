@@ -1716,31 +1716,42 @@ async fn discover_tools_via_sse(
 
     let mut body = sse_response.bytes_stream();
 
-    // Wait for session data from SSE stream (up to 10 seconds)
-    let session_id = match timeout(Duration::from_secs(10), body.next()).await {
-        Ok(Some(Ok(chunk))) => {
-            let chunk_str = String::from_utf8_lossy(&chunk);
-            println!(
-                "🔗 [{}] SSE handshake data: {}",
-                server_name,
-                chunk_str.trim()
-            );
+    // Wait for session data from SSE stream, reading multiple chunks if needed
+    let mut accumulated_data = String::new();
+    let session_id = loop {
+        match timeout(Duration::from_secs(10), body.next()).await {
+            Ok(Some(Ok(chunk))) => {
+                let chunk_str = String::from_utf8_lossy(&chunk);
+                accumulated_data.push_str(&chunk_str);
+                
+                println!(
+                    "🔗 [{}] SSE handshake data: {}",
+                    server_name,
+                    chunk_str.trim()
+                );
 
-            // Parse session ID from "data: /message?sessionId=xxx"
-            if let Some(data_line) = chunk_str.lines().find(|line| line.starts_with("data: ")) {
-                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
-                if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
-                    session_param.to_string()
-                } else {
-                    return Err(anyhow::anyhow!("No sessionId found in SSE data"));
+                // Try to parse session ID from accumulated data
+                if let Some(data_line) = accumulated_data.lines().find(|line| line.starts_with("data: ")) {
+                    let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                    if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                        break session_param.to_string();
+                    }
                 }
-            } else {
-                return Err(anyhow::anyhow!("No data line found in SSE response"));
+                
+                // If we have an "event: endpoint" but no data line yet, continue reading
+                if accumulated_data.contains("event: endpoint") && !accumulated_data.lines().any(|line| line.starts_with("data: ")) {
+                    continue;
+                }
+                
+                // If we've accumulated data but can't find session ID, something's wrong
+                if accumulated_data.len() > 1000 {
+                    return Err(anyhow::anyhow!("Could not find sessionId in SSE data after reading {} chars", accumulated_data.len()));
+                }
             }
+            Ok(Some(Err(e))) => return Err(anyhow::anyhow!("SSE stream error: {}", e)),
+            Ok(None) => return Err(anyhow::anyhow!("SSE stream ended unexpectedly")),
+            Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
         }
-        Ok(Some(Err(e))) => return Err(anyhow::anyhow!("SSE stream error: {}", e)),
-        Ok(None) => return Err(anyhow::anyhow!("SSE stream ended unexpectedly")),
-        Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
     };
 
     println!("✅ [{}] Got SSE session ID: {}", server_name, session_id);
@@ -2412,31 +2423,42 @@ async fn call_tool_via_sse(
 
     let mut body = sse_response.bytes_stream();
 
-    // Wait for session data from SSE stream (up to 10 seconds)
-    let session_id = match timeout(Duration::from_secs(10), body.next()).await {
-        Ok(Some(Ok(chunk))) => {
-            let chunk_str = String::from_utf8_lossy(&chunk);
-            println!(
-                "🔗 [{}] SSE handshake data: {}",
-                server_name,
-                chunk_str.trim()
-            );
+    // Wait for session data from SSE stream, reading multiple chunks if needed
+    let mut accumulated_data = String::new();
+    let session_id = loop {
+        match timeout(Duration::from_secs(10), body.next()).await {
+            Ok(Some(Ok(chunk))) => {
+                let chunk_str = String::from_utf8_lossy(&chunk);
+                accumulated_data.push_str(&chunk_str);
+                
+                println!(
+                    "🔗 [{}] SSE handshake data: {}",
+                    server_name,
+                    chunk_str.trim()
+                );
 
-            // Parse session ID from "data: /message?sessionId=xxx"
-            if let Some(data_line) = chunk_str.lines().find(|line| line.starts_with("data: ")) {
-                let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
-                if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
-                    session_param.to_string()
-                } else {
-                    return Err(anyhow::anyhow!("No sessionId found in SSE data"));
+                // Try to parse session ID from accumulated data
+                if let Some(data_line) = accumulated_data.lines().find(|line| line.starts_with("data: ")) {
+                    let endpoint_path = data_line.strip_prefix("data: ").unwrap_or("");
+                    if let Some(session_param) = endpoint_path.split("sessionId=").nth(1) {
+                        break session_param.to_string();
+                    }
                 }
-            } else {
-                return Err(anyhow::anyhow!("No data line found in SSE response"));
+                
+                // If we have an "event: endpoint" but no data line yet, continue reading
+                if accumulated_data.contains("event: endpoint") && !accumulated_data.lines().any(|line| line.starts_with("data: ")) {
+                    continue;
+                }
+                
+                // If we've accumulated data but can't find session ID, something's wrong
+                if accumulated_data.len() > 1000 {
+                    return Err(anyhow::anyhow!("Could not find sessionId in SSE data after reading {} chars", accumulated_data.len()));
+                }
             }
+            Ok(Some(Err(e))) => return Err(anyhow::anyhow!("SSE stream error: {}", e)),
+            Ok(None) => return Err(anyhow::anyhow!("SSE stream ended unexpectedly")),
+            Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
         }
-        Ok(Some(Err(e))) => return Err(anyhow::anyhow!("SSE stream error: {}", e)),
-        Ok(None) => return Err(anyhow::anyhow!("SSE stream ended unexpectedly")),
-        Err(_) => return Err(anyhow::anyhow!("Timeout waiting for SSE session data")),
     };
 
     println!("✅ [{}] Got SSE session ID: {}", server_name, session_id);

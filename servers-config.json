@@ -46,12 +46,12 @@
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "-v", "/tmp/kubeconfig:/home/appuser/.kube/config:ro",
+        "-v", "/Users/jonathonfritz/talos/kubeconfig:/home/appuser/.kube/config:ro",
         "-e", "SERVER_MODE=stdio",
         "ginnux/k8s-mcp-server:latest"
       ],
       "env": {},
-      "enabled": false,
+      "enabled": true,
       "alwaysActive": false,
       "autoStart": true,
       "workingDirectory": "project_root",
