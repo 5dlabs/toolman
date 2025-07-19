@@ -737,7 +737,10 @@ impl BridgeState {
             eprintln!("⚠️ Continuing anyway, but Docker-based servers may fail");
         } else {
             let docker_elapsed = docker_start.elapsed();
-            println!("✅ Docker is ready (took {:.2}s)", docker_elapsed.as_secs_f64());
+            println!(
+                "✅ Docker is ready (took {:.2}s)",
+                docker_elapsed.as_secs_f64()
+            );
         }
 
         let config_manager = self.system_config_manager.read().await;
@@ -749,7 +752,11 @@ impl BridgeState {
         server_list.sort_by_key(|(name, _)| *name);
 
         for (server_name, config) in server_list {
-            println!("🔍 Initializing server: {} at {:?}", server_name, chrono::Utc::now().format("%H:%M:%S"));
+            println!(
+                "🔍 Initializing server: {} at {:?}",
+                server_name,
+                chrono::Utc::now().format("%H:%M:%S")
+            );
 
             // For stdio servers, initialize them permanently
             if config.transport == "stdio" {
