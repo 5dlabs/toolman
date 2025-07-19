@@ -810,7 +810,7 @@ impl BridgeState {
                 match self.connection_pool.start_server(server_name).await {
                     Ok(_) => {
                         println!("✅ [{}] Server initialized successfully", server_name);
-                        
+
                         // Add small delay to ensure connection is fully stored before tool discovery
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         println!("🔄 [{}] Ready for tool discovery phase", server_name);
