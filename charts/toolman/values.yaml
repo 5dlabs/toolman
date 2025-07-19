@@ -150,11 +150,7 @@ config:
       transport: "stdio"
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-brave-search"]
-      enabled: true
-      alwaysActive: false
-      autoStart: true
       workingDirectory: "project_root"
-      executionContext: "remote"
       secretRef:
         name: "toolman-brave-search-secrets"
         keys:
@@ -166,11 +162,7 @@ config:
       transport: "stdio"
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-memory"]
-      enabled: true
-      alwaysActive: false
-      autoStart: true
       workingDirectory: "project_root"
-      executionContext: "remote"
       env:
         MEMORY_FILE_PATH: "/data/memory.json"
     
@@ -180,11 +172,7 @@ config:
       transport: "stdio"
       command: "docker"
       args: ["run", "-i", "--rm", "hashicorp/terraform-mcp-server"]
-      enabled: true
-      alwaysActive: false
-      autoStart: true
       workingDirectory: "project_root"
-      executionContext: "remote"
     
     kubernetes:
       name: "Kubernetes"
@@ -198,11 +186,7 @@ config:
         "-e", "KUBECONFIG=/home/appuser/.kube/config",
         "ginnux/k8s-mcp-server:latest"
       ]
-      enabled: true
-      alwaysActive: false
-      autoStart: true
       workingDirectory: "project_root"
-      executionContext: "remote"
       secretRef:
         name: "toolman-kubernetes-secrets"
         keys:
@@ -213,22 +197,14 @@ config:
       description: "Solana blockchain development tools"
       transport: "http"
       url: "https://mcp.solana.com/mcp"
-      enabled: true
-      alwaysActive: false
-      autoStart: true
       workingDirectory: "project_root"
-      executionContext: "remote"
     
     rustdocs:
       name: "Rust Docs"
       description: "Rust documentation MCP server"
       transport: "http"
       url: "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/sse"
-      enabled: true
-      alwaysActive: false
-      autoStart: true
       workingDirectory: "project_root"
-      executionContext: "remote"
     
 
 # Persistence for temporary files and caches

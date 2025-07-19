@@ -31,13 +31,6 @@ data:
           {{- else }}
           "args": [],
           {{- end }}
-          "enabled": {{ $serverConfig.enabled | default false }},
-          {{- if hasKey $serverConfig "alwaysActive" }}
-          "alwaysActive": {{ $serverConfig.alwaysActive }},
-          {{- end }}
-          {{- if hasKey $serverConfig "autoStart" }}
-          "autoStart": {{ $serverConfig.autoStart }},
-          {{- end }}
           {{- if $serverConfig.workingDirectory }}
           "workingDirectory": {{ $serverConfig.workingDirectory | quote }},
           {{- end }}
@@ -45,12 +38,10 @@ data:
           "url": {{ $serverConfig.url | quote }},
           {{- end }}
           {{- if $serverConfig.env }}
-          "env": {{ $serverConfig.env | toJson }},
+          "env": {{ $serverConfig.env | toJson }}
           {{- else }}
-          "env": {},
+          "env": {}
           {{- end }}
-          "tools": {},
-          "executionContext": {{ $serverConfig.executionContext | default "remote" | quote }}
         }
         {{- end }}
       }

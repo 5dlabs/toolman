@@ -38,23 +38,6 @@ pub struct LocalServerConfig {
     pub env: HashMap<String, String>,
 }
 
-/// Tool configuration within a server
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolConfig {
-    pub enabled: bool,
-}
-
-/// Execution context for MCP servers
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum ExecutionContext {
-    /// Server runs locally in agent context (for filesystem access, etc.)
-    Local,
-    /// Server runs remotely on server-side (for web APIs, databases, etc.)
-    #[default]
-    Remote,
-}
-
 /// Configuration for a single MCP server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -71,22 +54,12 @@ pub struct ServerConfig {
     pub args: Vec<String>,
     /// For http: URL to connect to
     pub url: Option<String>,
-    #[serde(rename = "alwaysActive", default)]
-    pub always_active: bool,
     #[serde(default)]
     pub env: HashMap<String, String>,
-    #[serde(rename = "autoStart", default)]
-    pub auto_start: bool,
     /// Working directory for the server process (optional, defaults to project directory)
     /// Supports: "project_root", absolute paths like "/usr/local/bin", or relative paths
     #[serde(rename = "workingDirectory", default)]
     pub working_directory: Option<String>,
-    /// Individual tool configurations with enabled flags
-    #[serde(default)]
-    pub tools: HashMap<String, ToolConfig>,
-    /// Execution context: where the server should run
-    #[serde(rename = "executionContext", default)]
-    pub execution_context: ExecutionContext,
 }
 
 /// Root configuration structure
@@ -186,23 +159,6 @@ impl SystemConfigManager {
         Ok(())
     }
 
-    /// Update tool enabled status
-    pub fn update_tool_enabled(&mut self, server_name: &str, tool_name: &str, enabled: bool) {
-        if let Some(server) = self.config.servers.get_mut(server_name) {
-            server
-                .tools
-                .insert(tool_name.to_string(), ToolConfig { enabled });
-        }
-    }
-
-    /// Set all tools to disabled for a server
-    pub fn disable_all_tools_for_server(&mut self, server_name: &str) {
-        if let Some(server) = self.config.servers.get_mut(server_name) {
-            for tool_config in server.tools.values_mut() {
-                tool_config.enabled = false;
-            }
-        }
-    }
 
     /// Get a mutable reference to the config for bulk updates
     pub fn get_config_mut(&mut self) -> &mut ServersConfig {

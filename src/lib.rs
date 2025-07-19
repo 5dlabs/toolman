@@ -20,7 +20,7 @@ pub mod config;
 
 // Re-export key types for convenience
 pub use client::McpClient;
-pub use config::{ClientInfo, ExecutionContext, ServerConfig, SystemConfigManager};
+pub use config::{ClientInfo, ServerConfig, SystemConfigManager};
 pub use context::{ContextConfig, ContextManager};
 
 /// Helper function to resolve working directory patterns

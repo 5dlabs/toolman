@@ -2264,7 +2264,6 @@ async fn client_config_endpoint(
             "transport": server_config.transport,
             "url": server_config.url,
             "enabled": true,
-            "executionContext": server_config.execution_context,
             "tools": tools
         });
     }
@@ -2337,7 +2336,6 @@ async fn main() -> Result<()> {
                     "description": config.description.as_deref().unwrap_or("No description"),
                     "command": config.command,
                     "args": config.args,
-                    "always_active": config.always_active,
                     "tools_count": tools.len(),
                     "tools": tools.iter().map(|tool| serde_json::json!({
                         "name": tool.name,

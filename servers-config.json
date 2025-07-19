@@ -7,10 +7,7 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "env": {},
-      "alwaysActive": false,
-      "autoStart": true,
-      "workingDirectory": "project_root",
-      "executionContext": "remote"
+      "workingDirectory": "project_root"
     },
     "brave-search": {
       "name": "Brave Search",
@@ -19,10 +16,7 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-brave-search"],
       "env": {},
-      "alwaysActive": false,
-      "autoStart": true,
-      "workingDirectory": "project_root",
-      "executionContext": "remote"
+      "workingDirectory": "project_root"
     },
     "kubernetes": {
       "name": "Kubernetes",
@@ -36,10 +30,7 @@
         "ginnux/k8s-mcp-server:latest"
       ],
       "env": {},
-      "alwaysActive": false,
-      "autoStart": true,
-      "workingDirectory": "project_root",
-      "executionContext": "remote"
+      "workingDirectory": "project_root"
     },
     "solana": {
       "name": "Solana",
@@ -49,10 +40,7 @@
       "command": "",
       "args": [],
       "env": {},
-      "alwaysActive": false,
-      "autoStart": true,
-      "workingDirectory": "project_root",
-      "executionContext": "remote"
+      "workingDirectory": "project_root"
     },
     "rustdocs": {
       "name": "Rust Docs",
@@ -62,10 +50,7 @@
       "command": "",
       "args": [],
       "env": {},
-      "alwaysActive": false,
-      "autoStart": true,
-      "workingDirectory": "project_root",
-      "executionContext": "remote"
+      "workingDirectory": "project_root"
     }
   }
 }
