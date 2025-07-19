@@ -846,7 +846,11 @@ impl BridgeState {
     }
 
     /// Parse tools from a JSON-RPC tools/list response
-    fn parse_tools_response(&self, server_name: &str, response: Value) -> anyhow::Result<Vec<Tool>> {
+    fn parse_tools_response(
+        &self,
+        server_name: &str,
+        response: Value,
+    ) -> anyhow::Result<Vec<Tool>> {
         // Parse tools from response
         if let Some(result) = response.get("result") {
             if let Some(tools_array) = result.get("tools").and_then(|t| t.as_array()) {
@@ -860,7 +864,10 @@ impl BridgeState {
                             Some(Tool {
                                 name: name.to_string(),
                                 description: description.to_string(),
-                                input_schema: tool.get("inputSchema").cloned().unwrap_or_else(|| json!({})),
+                                input_schema: tool
+                                    .get("inputSchema")
+                                    .cloned()
+                                    .unwrap_or_else(|| json!({})),
                                 server_name: server_name.to_string(),
                             })
                         } else {
@@ -901,10 +908,13 @@ impl BridgeState {
         if config.transport == "stdio" {
             let connections = self.connection_pool.connections.read().await;
             if let Some(connection) = connections.get(server_name) {
-                println!("🔄 [{}] Reusing existing stdio connection for tool discovery", server_name);
+                println!(
+                    "🔄 [{}] Reusing existing stdio connection for tool discovery",
+                    server_name
+                );
                 let connection = connection.clone(); // Clone before dropping the lock
                 drop(connections); // Release the read lock
-                
+
                 // Send tools/list request using existing connection
                 let tools_request = json!({
                     "jsonrpc": "2.0",
@@ -912,7 +922,11 @@ impl BridgeState {
                     "method": "tools/list"
                 });
 
-                if let Err(e) = self.connection_pool.send_request(connection.clone(), tools_request).await {
+                if let Err(e) = self
+                    .connection_pool
+                    .send_request(connection.clone(), tools_request)
+                    .await
+                {
                     return Err(anyhow::anyhow!("Failed to send tools/list request: {}", e));
                 }
 
@@ -926,7 +940,10 @@ impl BridgeState {
                     }
                 }
             } else {
-                println!("🔄 [{}] No existing connection found, will spawn temporary process", server_name);
+                println!(
+                    "🔄 [{}] No existing connection found, will spawn temporary process",
+                    server_name
+                );
             }
         }
 
