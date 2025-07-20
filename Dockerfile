@@ -37,10 +37,6 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 
 # Create symbolic links for Python
 RUN ln -sf python3 /usr/bin/python
-
-# Install Python MCP packages
-RUN pip3 install --no-cache-dir universal-mcp-reddit praw
-
 # Install UV and uvx for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
     mv /root/.local/bin/uv /usr/local/bin/ 2>/dev/null || \
