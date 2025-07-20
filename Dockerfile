@@ -37,12 +37,14 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 
 # Create symbolic links for Python
 RUN ln -sf python3 /usr/bin/python
-# Install UV and uvx for Python package management
+# Install UV for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash && \
     mv /root/.local/bin/uv /usr/local/bin/ 2>/dev/null || \
     mv /root/.cargo/bin/uv /usr/local/bin/ 2>/dev/null || \
-    echo "UV installed successfully" && \
-    ln -sf /usr/local/bin/uv /usr/local/bin/uvx
+    echo "UV installed successfully"
+
+# Install uvx (Python package runner)
+RUN pip3 install --no-cache-dir uvx
 
 # Install minimal Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
