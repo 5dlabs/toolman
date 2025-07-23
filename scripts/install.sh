@@ -124,6 +124,48 @@ detect_platform() {
     fi
 }
 
+# Try to download with fallback to x86_64 if arm64 fails
+download_with_fallback() {
+    local base_url="$1"
+    local target="$2"
+    local temp_archive="$3"
+    local version="$4"
+
+    # Try the native architecture first
+    local archive_name="toolman-${target}.tar.gz"
+    local archive_url="$base_url/$archive_name"
+
+    print_info "Attempting to download for architecture: $target"
+    if download_file "$archive_url" "$temp_archive"; then
+        return 0
+    fi
+
+    # If arm64 fails and we're on arm64, try x86_64 as fallback
+    if [[ "$target" == "aarch64-unknown-linux-gnu" ]]; then
+        print_warning "ARM64 binary not available, trying x86_64 fallback..."
+        local fallback_target="x86_64-unknown-linux-gnu"
+        local fallback_archive="toolman-${fallback_target}.tar.gz"
+        local fallback_url="$base_url/$fallback_archive"
+
+        if download_file "$fallback_url" "$temp_archive"; then
+            print_warning "Using x86_64 binary on ARM64 system (may require emulation)"
+            return 0
+        fi
+    fi
+
+    # Try a generic linux binary as last resort
+    print_warning "Architecture-specific binary not found, trying generic linux binary..."
+    local generic_archive="toolman-linux.tar.gz"
+    local generic_url="$base_url/$generic_archive"
+
+    if download_file "$generic_url" "$temp_archive"; then
+        print_warning "Using generic linux binary"
+        return 0
+    fi
+
+    return 1
+}
+
 # Get latest release version
 get_latest_version() {
     print_info "Fetching latest release information..."
@@ -221,11 +263,10 @@ main() {
     local tag="v$VERSION"
     local base_url="https://github.com/$REPO/releases/download/$tag"
     local archive_name="toolman-${target}.tar.gz"
-    local archive_url="$base_url/$archive_name"
 
     local dest_cli_path="$INSTALL_DIR/$CLIENT_BINARY_NAME"
     local dest_server_path="$INSTALL_DIR/$SERVER_BINARY_NAME"
-    
+
     local temp_dir
     temp_dir=$(mktemp -d)
     local temp_archive="$temp_dir/$archive_name"
@@ -241,8 +282,8 @@ main() {
     mkdir -p "$INSTALL_DIR"
 
     # Download archive
-    if ! download_file "$archive_url" "$temp_archive"; then
-        print_error "Failed to download release archive"
+    if ! download_with_fallback "$base_url" "$target" "$temp_archive" "$VERSION"; then
+        print_error "Failed to download release archive for architecture $target"
         print_info "Check that version $VERSION exists at:"
         print_info "  https://github.com/$REPO/releases/tag/$tag"
         rm -rf "$temp_dir"
