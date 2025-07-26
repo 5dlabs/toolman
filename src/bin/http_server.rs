@@ -27,8 +27,11 @@ use tower_http::cors::CorsLayer;
 
 // Kubernetes imports
 use k8s_openapi::api::core::v1::ConfigMap;
-use kube::{api::{Api, PostParams, PatchParams, Patch}, Client};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+use kube::{
+    api::{Api, Patch, PatchParams, PostParams},
+    Client,
+};
 use std::collections::BTreeMap;
 
 /// Toolman HTTP MCP Server
@@ -1020,7 +1023,7 @@ impl BridgeState {
             Ok(c) => c,
             Err(e) => {
                 println!("⚠️ Kubernetes client not available: {}", e);
-                return Ok(());  // Not running in Kubernetes, skip ConfigMap creation
+                return Ok(()); // Not running in Kubernetes, skip ConfigMap creation
             }
         };
 
@@ -1060,7 +1063,12 @@ impl BridgeState {
             Err(e) if e.to_string().contains("AlreadyExists") => {
                 // Update existing ConfigMap
                 let patch = Patch::Apply(&cm);
-                api.patch("toolman-tool-catalog", &PatchParams::apply("toolman"), &patch).await?;
+                api.patch(
+                    "toolman-tool-catalog",
+                    &PatchParams::apply("toolman"),
+                    &patch,
+                )
+                .await?;
                 println!("✅ Updated tool catalog ConfigMap");
             }
             Err(e) => return Err(anyhow::anyhow!("Failed to create ConfigMap: {}", e)),
@@ -1079,74 +1087,82 @@ impl BridgeState {
         let mut remote = HashMap::new();
 
         // Define local tools (filesystem and git)
-        local.insert("filesystem".to_string(), LocalServerInfo {
-            description: "File system operations for reading, writing, and managing files".to_string(),
-            tools: vec![
-                ToolInfo {
-                    name: "read_file".to_string(),
-                    description: "Read contents of a file".to_string(),
-                    category: "file-operations".to_string(),
-                    use_cases: vec![
-                        "reading config files".to_string(),
-                        "analyzing code".to_string(),
-                        "viewing documentation".to_string(),
-                    ],
-                    input_schema: None,
-                },
-                ToolInfo {
-                    name: "write_file".to_string(),
-                    description: "Write or update file contents".to_string(),
-                    category: "file-operations".to_string(),
-                    use_cases: vec![
-                        "generating code".to_string(),
-                        "updating configs".to_string(),
-                        "creating documentation".to_string(),
-                    ],
-                    input_schema: None,
-                },
-                ToolInfo {
-                    name: "list_directory".to_string(),
-                    description: "List directory contents".to_string(),
-                    category: "file-operations".to_string(),
-                    use_cases: vec![
-                        "exploring project structure".to_string(),
-                        "finding files".to_string(),
-                    ],
-                    input_schema: None,
-                },
-            ],
-        });
+        local.insert(
+            "filesystem".to_string(),
+            LocalServerInfo {
+                description: "File system operations for reading, writing, and managing files"
+                    .to_string(),
+                tools: vec![
+                    ToolInfo {
+                        name: "read_file".to_string(),
+                        description: "Read contents of a file".to_string(),
+                        category: "file-operations".to_string(),
+                        use_cases: vec![
+                            "reading config files".to_string(),
+                            "analyzing code".to_string(),
+                            "viewing documentation".to_string(),
+                        ],
+                        input_schema: None,
+                    },
+                    ToolInfo {
+                        name: "write_file".to_string(),
+                        description: "Write or update file contents".to_string(),
+                        category: "file-operations".to_string(),
+                        use_cases: vec![
+                            "generating code".to_string(),
+                            "updating configs".to_string(),
+                            "creating documentation".to_string(),
+                        ],
+                        input_schema: None,
+                    },
+                    ToolInfo {
+                        name: "list_directory".to_string(),
+                        description: "List directory contents".to_string(),
+                        category: "file-operations".to_string(),
+                        use_cases: vec![
+                            "exploring project structure".to_string(),
+                            "finding files".to_string(),
+                        ],
+                        input_schema: None,
+                    },
+                ],
+            },
+        );
 
-        local.insert("git".to_string(), LocalServerInfo {
-            description: "Git version control operations".to_string(),
-            tools: vec![
-                ToolInfo {
-                    name: "git_status".to_string(),
-                    description: "Check repository status".to_string(),
-                    category: "version-control".to_string(),
-                    use_cases: vec![
-                        "checking changes".to_string(),
-                        "review before commit".to_string(),
-                    ],
-                    input_schema: None,
-                },
-                ToolInfo {
-                    name: "git_log".to_string(),
-                    description: "View commit history".to_string(),
-                    category: "version-control".to_string(),
-                    use_cases: vec![
-                        "reviewing changes".to_string(),
-                        "understanding project history".to_string(),
-                    ],
-                    input_schema: None,
-                },
-            ],
-        });
+        local.insert(
+            "git".to_string(),
+            LocalServerInfo {
+                description: "Git version control operations".to_string(),
+                tools: vec![
+                    ToolInfo {
+                        name: "git_status".to_string(),
+                        description: "Check repository status".to_string(),
+                        category: "version-control".to_string(),
+                        use_cases: vec![
+                            "checking changes".to_string(),
+                            "review before commit".to_string(),
+                        ],
+                        input_schema: None,
+                    },
+                    ToolInfo {
+                        name: "git_log".to_string(),
+                        description: "View commit history".to_string(),
+                        category: "version-control".to_string(),
+                        use_cases: vec![
+                            "reviewing changes".to_string(),
+                            "understanding project history".to_string(),
+                        ],
+                        input_schema: None,
+                    },
+                ],
+            },
+        );
 
         // Group tools by server
         let mut server_tools: HashMap<String, Vec<&Tool>> = HashMap::new();
         for tool in tools.values() {
-            server_tools.entry(tool.server_name.clone())
+            server_tools
+                .entry(tool.server_name.clone())
                 .or_insert_with(Vec::new)
                 .push(tool);
         }
@@ -1154,15 +1170,16 @@ impl BridgeState {
         // Build remote server info
         for (server_name, server_config) in servers {
             if let Some(tools) = server_tools.get(server_name) {
-                let tool_infos: Vec<ToolInfo> = tools.iter().map(|tool| {
-                    ToolInfo {
+                let tool_infos: Vec<ToolInfo> = tools
+                    .iter()
+                    .map(|tool| ToolInfo {
                         name: tool.name.clone(),
                         description: tool.description.clone(),
                         category: self.infer_category(&tool.name, &tool.description),
                         use_cases: self.infer_use_cases(&tool.name, &tool.description),
                         input_schema: Some(tool.input_schema.clone()),
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 let endpoint = server_config.url.clone().unwrap_or_else(|| {
                     if server_config.transport == "stdio" {
@@ -1172,13 +1189,19 @@ impl BridgeState {
                     }
                 });
 
-                remote.insert(server_name.clone(), RemoteServerInfo {
-                    description: server_config.description.clone()
-                        .unwrap_or_else(|| server_config.name.clone()
-                        .unwrap_or_else(|| server_name.clone())),
-                    endpoint,
-                    tools: tool_infos,
-                });
+                remote.insert(
+                    server_name.clone(),
+                    RemoteServerInfo {
+                        description: server_config.description.clone().unwrap_or_else(|| {
+                            server_config
+                                .name
+                                .clone()
+                                .unwrap_or_else(|| server_name.clone())
+                        }),
+                        endpoint,
+                        tools: tool_infos,
+                    },
+                );
             }
         }
 
@@ -1193,13 +1216,24 @@ impl BridgeState {
     fn infer_category(&self, name: &str, description: &str) -> String {
         let combined = format!("{} {}", name.to_lowercase(), description.to_lowercase());
 
-        if combined.contains("kubernetes") || combined.contains("k8s") || combined.contains("helm") {
+        if combined.contains("kubernetes") || combined.contains("k8s") || combined.contains("helm")
+        {
             "kubernetes".to_string()
-        } else if combined.contains("database") || combined.contains("sql") || combined.contains("postgres") || combined.contains("mysql") {
+        } else if combined.contains("database")
+            || combined.contains("sql")
+            || combined.contains("postgres")
+            || combined.contains("mysql")
+        {
             "database".to_string()
-        } else if combined.contains("search") || combined.contains("web") || combined.contains("brave") {
+        } else if combined.contains("search")
+            || combined.contains("web")
+            || combined.contains("brave")
+        {
             "search".to_string()
-        } else if combined.contains("memory") || combined.contains("knowledge") || combined.contains("graph") {
+        } else if combined.contains("memory")
+            || combined.contains("knowledge")
+            || combined.contains("graph")
+        {
             "memory".to_string()
         } else if combined.contains("git") || combined.contains("version") {
             "version-control".to_string()
