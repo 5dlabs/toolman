@@ -1192,7 +1192,10 @@ impl BridgeState {
                             }),
                             command: server_config.command.clone(),
                             args: server_config.args.clone(),
-                            working_directory: server_config.working_directory.clone().unwrap_or_else(|| "project_root".to_string()),
+                            working_directory: server_config
+                                .working_directory
+                                .clone()
+                                .unwrap_or_else(|| "project_root".to_string()),
                             tools: tool_infos,
                         },
                     );
