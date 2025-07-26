@@ -1055,24 +1055,15 @@ impl BridgeState {
 
         let api: Api<ConfigMap> = Api::namespaced(client, "mcp");
 
-        // Try to create, update if exists
-        match api.create(&PostParams::default(), &cm).await {
-            Ok(_) => {
-                println!("✅ Created tool catalog ConfigMap");
-            }
-            Err(e) if e.to_string().contains("AlreadyExists") => {
-                // Update existing ConfigMap
-                let patch = Patch::Apply(&cm);
-                api.patch(
-                    "toolman-tool-catalog",
-                    &PatchParams::apply("toolman"),
-                    &patch,
-                )
-                .await?;
-                println!("✅ Updated tool catalog ConfigMap");
-            }
-            Err(e) => return Err(anyhow::anyhow!("Failed to create ConfigMap: {}", e)),
-        }
+        // Use server-side apply which handles both create and update
+        let patch = Patch::Apply(&cm);
+        api.patch(
+            "toolman-tool-catalog",
+            &PatchParams::apply("toolman").force(),
+            &patch,
+        )
+        .await?;
+        println!("✅ Created/Updated tool catalog ConfigMap");
 
         Ok(())
     }
