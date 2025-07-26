@@ -29,7 +29,7 @@ use tower_http::cors::CorsLayer;
 use k8s_openapi::api::core::v1::ConfigMap;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
-    api::{Api, Patch, PatchParams, PostParams},
+    api::{Api, Patch, PatchParams},
     Client,
 };
 use std::collections::BTreeMap;
