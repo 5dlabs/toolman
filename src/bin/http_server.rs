@@ -840,15 +840,12 @@ impl BridgeState {
         Ok(state)
     }
 
-    /// Discover all available tools from all configured servers
-    async fn discover_all_tools(&self) -> anyhow::Result<()> {
+    /// Discover and cache available tools from all configured servers
+    async fn discover_all_tools(&self) -> Result<()> {
+        println!("🔍 Starting tool discovery for all configured servers...");
         let init_start = std::time::Instant::now();
-        println!(
-            "🔍 Initializing all configured servers and discovering tools at {:?}...",
-            chrono::Utc::now().format("%H:%M:%S")
-        );
 
-        // Wait for Docker to be ready BEFORE initializing any servers (prevents race conditions)
+        // Wait for Docker to be ready BEFORE initializing any servers
         println!("🐳 Ensuring Docker daemon is ready before starting any servers...");
         let docker_start = std::time::Instant::now();
         if let Err(e) = self.connection_pool.wait_for_docker(60).await {
@@ -862,19 +859,36 @@ impl BridgeState {
             );
         }
 
-        // CRITICAL: Scope the read lock to prevent deadlock with write locks during server initialization
-        let server_list = {
+        // Get all configured servers (remote servers)
+        let servers = {
             let config_manager = self.system_config_manager.read().await;
-            let servers = config_manager.get_servers();
+            config_manager.get_servers().clone()
+        };
 
-            // Process servers in deterministic order for consistent behavior
-            let mut server_list: Vec<_> = servers
-                .iter()
-                .map(|(name, config)| (name.clone(), config.clone()))
-                .collect();
-            server_list.sort_by_key(|(name, _)| name.clone());
-            server_list
-        }; // Read lock automatically dropped here
+        // Get local tool servers from ConfigMap if available
+        let local_servers = match Client::try_default().await {
+            Ok(client) => self
+                .read_local_tools_config(&client)
+                .await
+                .unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        };
+
+        // Combine all servers for discovery
+        let mut all_servers = servers.clone();
+        for (name, config) in local_servers {
+            // Add local servers to the discovery list
+            all_servers.insert(name, config);
+        }
+
+        // Convert to vector for async operations
+        let mut server_list: Vec<_> = all_servers.into_iter().collect();
+        server_list.sort_by_key(|(name, _)| name.clone()); // Deterministic order
+
+        if server_list.is_empty() {
+            println!("⚠️ No servers configured - skipping tool discovery");
+            return Ok(());
+        }
 
         let mut all_tools = HashMap::new();
 
