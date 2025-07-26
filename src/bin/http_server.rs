@@ -1163,7 +1163,7 @@ impl BridgeState {
         for tool in tools.values() {
             server_tools
                 .entry(tool.server_name.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(tool);
         }
 
