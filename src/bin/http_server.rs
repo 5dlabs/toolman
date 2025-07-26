@@ -1033,8 +1033,11 @@ impl BridgeState {
             config_manager.get_servers().clone()
         };
 
+        // Read local tools configuration from ConfigMap
+        let local_servers = self.read_local_tools_config(&client).await?;
+
         // Build the tool catalog
-        let catalog = self.build_tool_catalog(tools, &servers);
+        let catalog = self.build_tool_catalog(tools, &servers, &local_servers);
 
         // Convert to JSON
         let catalog_json = serde_json::to_string_pretty(&catalog)?;
@@ -1068,86 +1071,59 @@ impl BridgeState {
         Ok(())
     }
 
+    /// Read local tools configuration from ConfigMap
+    async fn read_local_tools_config(
+        &self,
+        client: &Client,
+    ) -> anyhow::Result<HashMap<String, ServerConfig>> {
+        let api: Api<ConfigMap> = Api::namespaced(client.clone(), "mcp");
+
+        match api.get("toolman-local-tools").await {
+            Ok(cm) => {
+                if let Some(data) = cm.data {
+                    if let Some(config_json) = data.get("local-tools-config.json") {
+                        // Parse using the same structure as servers config
+                        let config: serde_json::Value = serde_json::from_str(config_json)?;
+                        if let Some(servers_obj) = config.get("servers").and_then(|s| s.as_object())
+                        {
+                            let mut servers = HashMap::new();
+                            for (name, value) in servers_obj {
+                                if let Ok(server_config) =
+                                    serde_json::from_value::<ServerConfig>(value.clone())
+                                {
+                                    servers.insert(name.clone(), server_config);
+                                }
+                            }
+                            println!(
+                                "✅ Loaded {} local tool servers from ConfigMap",
+                                servers.len()
+                            );
+                            return Ok(servers);
+                        }
+                    }
+                }
+                println!("⚠️ Local tools ConfigMap found but no valid data");
+                Ok(HashMap::new())
+            }
+            Err(e) => {
+                println!(
+                    "⚠️ Local tools ConfigMap not found: {}. No local tools will be included.",
+                    e
+                );
+                Ok(HashMap::new())
+            }
+        }
+    }
+
     /// Build the tool catalog structure
     fn build_tool_catalog(
         &self,
         tools: &HashMap<String, Tool>,
         servers: &HashMap<String, ServerConfig>,
+        local_servers: &HashMap<String, ServerConfig>,
     ) -> ToolCatalog {
         let mut local = HashMap::new();
         let mut remote = HashMap::new();
-
-        // Define local tools (filesystem and git)
-        local.insert(
-            "filesystem".to_string(),
-            LocalServerInfo {
-                description: "File system operations for reading, writing, and managing files"
-                    .to_string(),
-                tools: vec![
-                    ToolInfo {
-                        name: "read_file".to_string(),
-                        description: "Read contents of a file".to_string(),
-                        category: "file-operations".to_string(),
-                        use_cases: vec![
-                            "reading config files".to_string(),
-                            "analyzing code".to_string(),
-                            "viewing documentation".to_string(),
-                        ],
-                        input_schema: None,
-                    },
-                    ToolInfo {
-                        name: "write_file".to_string(),
-                        description: "Write or update file contents".to_string(),
-                        category: "file-operations".to_string(),
-                        use_cases: vec![
-                            "generating code".to_string(),
-                            "updating configs".to_string(),
-                            "creating documentation".to_string(),
-                        ],
-                        input_schema: None,
-                    },
-                    ToolInfo {
-                        name: "list_directory".to_string(),
-                        description: "List directory contents".to_string(),
-                        category: "file-operations".to_string(),
-                        use_cases: vec![
-                            "exploring project structure".to_string(),
-                            "finding files".to_string(),
-                        ],
-                        input_schema: None,
-                    },
-                ],
-            },
-        );
-
-        local.insert(
-            "git".to_string(),
-            LocalServerInfo {
-                description: "Git version control operations".to_string(),
-                tools: vec![
-                    ToolInfo {
-                        name: "git_status".to_string(),
-                        description: "Check repository status".to_string(),
-                        category: "version-control".to_string(),
-                        use_cases: vec![
-                            "checking changes".to_string(),
-                            "review before commit".to_string(),
-                        ],
-                        input_schema: None,
-                    },
-                    ToolInfo {
-                        name: "git_log".to_string(),
-                        description: "View commit history".to_string(),
-                        category: "version-control".to_string(),
-                        use_cases: vec![
-                            "reviewing changes".to_string(),
-                            "understanding project history".to_string(),
-                        ],
-                        input_schema: None,
-                    },
-                ],
-            },
-        );
 
         // Group tools by server
         let mut server_tools: HashMap<String, Vec<&Tool>> = HashMap::new();
@@ -1158,8 +1134,44 @@ impl BridgeState {
                 .push(tool);
         }
 
+        // Build local server info from discovered tools
+        for (server_name, server_config) in local_servers {
+            if let Some(tools) = server_tools.get(server_name) {
+                let tool_infos: Vec<ToolInfo> = tools
+                    .iter()
+                    .map(|tool| ToolInfo {
+                        name: tool.name.clone(),
+                        description: tool.description.clone(),
+                        category: self.infer_category(&tool.name, &tool.description),
+                        use_cases: self.infer_use_cases(&tool.name, &tool.description),
+                        input_schema: Some(tool.input_schema.clone()),
+                    })
+                    .collect();
+
+                if !tool_infos.is_empty() {
+                    local.insert(
+                        server_name.clone(),
+                        LocalServerInfo {
+                            description: server_config.description.clone().unwrap_or_else(|| {
+                                server_config
+                                    .name
+                                    .clone()
+                                    .unwrap_or_else(|| server_name.clone())
+                            }),
+                            tools: tool_infos,
+                        },
+                    );
+                }
+            }
+        }
+
         // Build remote server info
         for (server_name, server_config) in servers {
+            // Skip if this is also in local servers (avoid duplicates)
+            if local_servers.contains_key(server_name) {
+                continue;
+            }
+
             if let Some(tools) = server_tools.get(server_name) {
                 let tool_infos: Vec<ToolInfo> = tools
                     .iter()

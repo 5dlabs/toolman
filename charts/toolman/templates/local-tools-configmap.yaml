@@ -1,0 +1,12 @@
+{{- if .Values.localTools }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "toolman.fullname" . }}-local-tools
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "toolman.labels" . | nindent 4 }}
+data:
+  local-tools-config.json: |
+{{ .Values.localTools | toJson | indent 4 }}
+{{- end }}

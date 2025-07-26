@@ -216,6 +216,24 @@ config:
           - "REDDIT_USERNAME"
           - "REDDIT_PASSWORD"
 
+# Local tools configuration (client-side tools available in agent containers)
+localTools:
+  servers:
+    filesystem:
+      name: "Filesystem"
+      description: "File system operations for reading, writing, and managing files"
+      transport: "stdio"
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      workingDirectory: "project_root"
+    git:
+      name: "Git"
+      description: "Git version control operations"
+      transport: "stdio"
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-git"]
+      workingDirectory: "project_root"
+
 # Persistence for temporary files and caches
 persistence:
   enabled: true
