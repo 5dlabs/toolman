@@ -34,6 +34,18 @@ use kube::{
 };
 use std::collections::BTreeMap;
 
+/// Get the current namespace from Kubernetes service account
+fn get_current_namespace() -> String {
+    // Try to read namespace from Kubernetes service account
+    match std::fs::read_to_string("/var/run/secrets/kubernetes.io/serviceaccount/namespace") {
+        Ok(namespace) => namespace.trim().to_string(),
+        Err(_) => {
+            // Fallback to environment variable or default
+            std::env::var("KUBERNETES_NAMESPACE").unwrap_or_else(|_| "default".to_string())
+        }
+    }
+}
+
 /// Toolman HTTP MCP Server
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -1035,14 +1047,12 @@ impl BridgeState {
     ) -> anyhow::Result<()> {
         println!("📋 Creating tool catalog ConfigMap...");
 
-        // Try to create a Kubernetes client
-        let client = match Client::try_default().await {
-            Ok(c) => c,
-            Err(e) => {
-                println!("⚠️ Kubernetes client not available: {}", e);
-                return Ok(()); // Not running in Kubernetes, skip ConfigMap creation
-            }
-        };
+        // Initialize Kubernetes client
+        let client = Client::try_default().await?;
+
+        // Detect current namespace
+        let namespace = get_current_namespace();
+        println!("📍 Detected namespace: {}", namespace);
 
         // Get server configurations for descriptions
         let servers = {
@@ -1066,14 +1076,14 @@ impl BridgeState {
         let cm = ConfigMap {
             metadata: ObjectMeta {
                 name: Some("toolman-tool-catalog".to_string()),
-                namespace: Some("mcp".to_string()),
+                namespace: Some(namespace.clone()),
                 ..Default::default()
             },
             data: Some(data),
             ..Default::default()
         };
 
-        let api: Api<ConfigMap> = Api::namespaced(client, "mcp");
+        let api: Api<ConfigMap> = Api::namespaced(client, &namespace);
 
         // Use server-side apply which handles both create and update
         let patch = Patch::Apply(&cm);
@@ -1093,10 +1103,12 @@ impl BridgeState {
         &self,
         client: &Client,
     ) -> anyhow::Result<HashMap<String, ServerConfig>> {
-        let api: Api<ConfigMap> = Api::namespaced(client.clone(), "mcp");
+        let namespace = get_current_namespace();
+        let api: Api<ConfigMap> = Api::namespaced(client.clone(), &namespace);
 
         match api.get("toolman-local-tools").await {
             Ok(cm) => {
+                println!("✅ Loaded local tools config from namespace: {}", namespace);
                 if let Some(data) = cm.data {
                     if let Some(config_json) = data.get("local-tools-config.json") {
                         // Parse using the same structure as servers config
