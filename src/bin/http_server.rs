@@ -859,12 +859,6 @@ impl BridgeState {
             );
         }
 
-        // Get all configured servers (remote servers)
-        let servers = {
-            let config_manager = self.system_config_manager.read().await;
-            config_manager.get_servers().clone()
-        };
-
         // Get local tool servers from ConfigMap if available
         let local_servers = match Client::try_default().await {
             Ok(client) => self
@@ -874,12 +868,21 @@ impl BridgeState {
             Err(_) => HashMap::new(),
         };
 
-        // Combine all servers for discovery
-        let mut all_servers = servers.clone();
-        for (name, config) in local_servers {
-            // Add local servers to the discovery list
-            all_servers.insert(name, config);
+        // Add local servers to system configuration temporarily for discovery
+        if !local_servers.is_empty() {
+            let mut config_manager = self.system_config_manager.write().await;
+            let config = config_manager.get_config_mut();
+            for (name, config_data) in &local_servers {
+                println!("📝 Adding local server '{}' to configuration", name);
+                config.servers.insert(name.clone(), config_data.clone());
+            }
         }
+
+        // Get all configured servers (including the newly added local ones)
+        let all_servers = {
+            let config_manager = self.system_config_manager.read().await;
+            config_manager.get_servers().clone()
+        };
 
         // Convert to vector for async operations
         let mut server_list: Vec<_> = all_servers.into_iter().collect();
