@@ -224,15 +224,8 @@ localTools:
       description: "File system operations for reading, writing, and managing files"
       transport: "stdio"
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem"]
-      workingDirectory: "project_root"
-    git:
-      name: "Git"
-      description: "Git version control operations"
-      transport: "stdio"
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-git"]
-      workingDirectory: "project_root"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+      workingDirectory: "/tmp"
 
 # Persistence for temporary files and caches
 persistence:
