@@ -1,33 +1,16 @@
 {
   "remoteTools": [
-    "brave-search_brave_web_search",
-    "brave-search_brave_local_search",
-    "memory_create_entities",
-    "memory_search_nodes",
-    "memory_read_graph",
-    "memory_add_observations",
     "kubernetes_listResources",
     "kubernetes_getResource",
-    "solana_search",
-    "rustdocs_query_rust_docs",
-    "terraform_searchModules",
-    "terraform_moduleDetails"
+    "kubernetes_createResource",
+    "kubernetes_getAPIResources"
   ],
   "localServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/jonathonfritz/mcp-proxy"],
-      "tools": ["read_file", "write_file", "list_directory", "create_directory"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/jonathonfritz/platform"],
+      "tools": ["read_file", "write_file", "list_directory", "create_directory", "edit_file"],
       "workingDirectory": "project_root"
-    },
-    "github": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"],
-      "tools": ["create_or_update_file", "create_repository", "create_issue", "update_issue", "create_pull_request"],
-      "workingDirectory": "project_root",
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
-      }
     }
   }
 }

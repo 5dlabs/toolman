@@ -29,7 +29,7 @@ struct Args {
     #[arg(value_name = "HTTP_URL", help = "HTTP server URL for remote tools")]
     http_url: Option<String>,
 
-    /// Working directory (positional argument for compatibility)  
+    /// Working directory (positional argument for compatibility)
     #[arg(
         value_name = "WORKING_DIR",
         help = "Working directory for local servers"

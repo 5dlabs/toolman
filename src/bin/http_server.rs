@@ -83,6 +83,9 @@ struct ToolCatalog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LocalServerInfo {
     description: String,
+    command: String,
+    args: Vec<String>,
+    working_directory: String,
     tools: Vec<ToolInfo>,
 }
 
@@ -1187,6 +1190,9 @@ impl BridgeState {
                                     .clone()
                                     .unwrap_or_else(|| server_name.clone())
                             }),
+                            command: server_config.command.clone(),
+                            args: server_config.args.clone(),
+                            working_directory: server_config.working_directory.clone().unwrap_or_else(|| "project_root".to_string()),
                             tools: tool_infos,
                         },
                     );
