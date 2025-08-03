@@ -414,16 +414,16 @@ jobs:
 
       - name: Lint Helm chart
         run: |
-          helm lint ./charts/mcp-proxy
+          helm lint ./charts/toolman
 
       - name: Test Helm chart rendering
         run: |
           # Test with default values
-          helm template toolman ./charts/mcp-proxy --debug > /tmp/default.yaml
+          helm template toolman ./charts/toolman --debug > /tmp/default.yaml
           echo "✅ Default values template rendered successfully"
 
           # Test with development values
-          helm template toolman ./charts/mcp-proxy \
+          helm template toolman ./charts/toolman \
             --set image.tag=test-version > /tmp/custom.yaml
           echo "✅ Custom values template rendered successfully"
 
@@ -465,7 +465,7 @@ jobs:
           # Install with test values (no wait, we'll debug manually)
           echo "🔍 Installing Helm chart..."
           echo "Using image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
-          helm install test-toolman ./charts/mcp-proxy \
+          helm install test-toolman ./charts/toolman \
             --namespace mcp \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
             --set image.tag=${{ needs.version.outputs.version }} \
@@ -474,7 +474,7 @@ jobs:
 
           # Immediate status check
           echo "🔍 Checking immediate deployment status..."
-          kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp
+          kubectl get pods -l app.kubernetes.io/name=toolman -n mcp
           kubectl get all -n mcp
           
           # Wait a bit for pods to start
@@ -483,30 +483,30 @@ jobs:
           
           # Check status again
           echo "🔍 Checking pod status after 30s..."
-          kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp -o wide
-          kubectl describe pods -l app.kubernetes.io/name=mcp-proxy -n mcp
+          kubectl get pods -l app.kubernetes.io/name=toolman -n mcp -o wide
+          kubectl describe pods -l app.kubernetes.io/name=toolman -n mcp
           
           # Check logs regardless of status
           echo "🔍 Checking pod logs..."
-          kubectl logs -l app.kubernetes.io/name=mcp-proxy -n mcp --tail=50 || echo "No logs available yet"
+          kubectl logs -l app.kubernetes.io/name=toolman -n mcp --tail=50 || echo "No logs available yet"
           
           # Now try to wait for readiness
           echo "🔍 Waiting for pods to be ready..."
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mcp-proxy -n mcp --timeout=120s || {
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=toolman -n mcp --timeout=120s || {
             echo "❌ Pod readiness check failed after 2 minutes, final debugging..."
-            kubectl describe pods -l app.kubernetes.io/name=mcp-proxy -n mcp
-            kubectl logs -l app.kubernetes.io/name=mcp-proxy -n mcp --tail=100 || echo "No logs available"
+            kubectl describe pods -l app.kubernetes.io/name=toolman -n mcp
+            kubectl logs -l app.kubernetes.io/name=toolman -n mcp --tail=100 || echo "No logs available"
             kubectl get events -n mcp --sort-by='.lastTimestamp' | tail -20
           }
           
           # Debug: Check ConfigMap and deployment
           echo "🔍 Debugging ConfigMap and deployment..."
-          kubectl get configmap -l app.kubernetes.io/name=mcp-proxy -n mcp
-          kubectl describe configmap -l app.kubernetes.io/name=mcp-proxy -n mcp
-          kubectl describe deployment -l app.kubernetes.io/name=mcp-proxy -n mcp | grep -A 10 -B 5 "Mounts\|Volume"
+          kubectl get configmap -l app.kubernetes.io/name=toolman -n mcp
+          kubectl describe configmap -l app.kubernetes.io/name=toolman -n mcp
+          kubectl describe deployment -l app.kubernetes.io/name=toolman -n mcp | grep -A 10 -B 5 "Mounts\|Volume"
           
           # Debug: Check pod details
-          POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=mcp-proxy -n mcp -o jsonpath='{.items[0].metadata.name}')
+          POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=toolman -n mcp -o jsonpath='{.items[0].metadata.name}')
           echo "🔍 Pod details for $POD_NAME:"
           kubectl describe pod $POD_NAME -n mcp | grep -A 20 -B 5 "Mounts\|Volume"
           
