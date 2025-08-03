@@ -520,10 +520,10 @@ jobs:
 
           echo "✅ Helm chart deployment test passed"
 
-  # Deploy to production
+  # Deploy to production (DISABLED - ArgoCD handles deployment via GitOps)
   deploy:
     needs: [version, build-binaries, build-docker, security-scan]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false # Disabled - ArgoCD manages deployments via GitOps
     runs-on: [self-hosted, k8s-runner]
     environment: production
     permissions:
