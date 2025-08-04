@@ -1,6 +1,6 @@
 [package]
 name = "toolman"
-version = "1.0.0"
+version = "2.2.0"
 edition = "2021"
 description = "Dynamic tool management for MCP (Model Context Protocol) servers - Your ultimate tool companion"
 authors = ["Toolman Contributors"]
