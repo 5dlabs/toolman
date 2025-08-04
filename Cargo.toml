@@ -63,3 +63,8 @@ log = "0.4"
 name = "integration"
 path = "tests/integration/mod.rs"
 harness = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
