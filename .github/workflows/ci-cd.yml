@@ -567,6 +567,35 @@ jobs:
           kubectl get pods -n mcp -l app.kubernetes.io/name=toolman
           kubectl get services -n mcp -l app.kubernetes.io/name=toolman
 
+
+  # Automatic semantic versioning and tagging
+  semantic-release:
+    needs: [version, build-binaries, build-docker, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install semantic-release
+        run: |
+          npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/github
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: semantic-release
   # Create GitHub Release (only for tags)
   create-release:
     needs: [version, build-binaries, build-docker]
