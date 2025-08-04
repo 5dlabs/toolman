@@ -49,7 +49,3 @@ data:
     {{- else }}
     {{- .Files.Get "config/servers-config.json" | nindent 4 }}
     {{- end }}
-  {{- if .Values.localTools }}
-  local-tools-config.json: |
-{{ .Values.localTools | toJson | indent 4 }}
-  {{- end }}
