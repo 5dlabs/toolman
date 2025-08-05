@@ -44,22 +44,55 @@ on:
     tags:
       - 'v*.*.*'
       - '[0-9]+.[0-9]+.[0-9]+*'
+    branches:
+      - main
+    paths:
+      - 'Cargo.toml'
 
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
     runs-on: "ubuntu-22.04"
+    # Only run for tag pushes or semantic-release commits that update Cargo.toml
+    if: ${{ github.event_name == 'push' && (contains(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, 'chore(release):')) }}
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ !github.event.pull_request && github.ref_name || '' }}
-      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
-      publishing: ${{ !github.event.pull_request }}
+      tag: ${{ steps.semantic-release-check.outputs.tag || (!github.event.pull_request && github.ref_name || '') }}
+      tag-flag: ${{ steps.semantic-release-check.outputs.tag && format('--tag={0}', steps.semantic-release-check.outputs.tag) || (!github.event.pull_request && format('--tag={0}', github.ref_name) || '') }}
+      publishing: ${{ steps.semantic-release-check.outputs.is_release == 'true' || (!github.event.pull_request && github.event_name == 'push' && contains(github.ref, 'refs/tags/')) }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check for semantic-release tag
+        id: semantic-release-check
+        run: |
+          # Check if this is a semantic-release commit by looking at the commit message
+          COMMIT_MSG=$(git log --format=%s -n 1)
+          echo "Commit message: $COMMIT_MSG"
+          
+          if [[ "$COMMIT_MSG" == chore\(release\):* ]]; then
+            # Extract version from commit message
+            VERSION=$(echo "$COMMIT_MSG" | sed 's/chore(release): //')
+            echo "This is a semantic-release commit for version: $VERSION"
+            
+            # Check if tag exists for this version
+            if git tag --list | grep -q "^v$VERSION$"; then
+              echo "Found tag v$VERSION"
+              echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+              echo "is_release=true" >> $GITHUB_OUTPUT
+            else
+              echo "No tag found for version $VERSION"
+              echo "is_release=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Not a semantic-release commit"
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
