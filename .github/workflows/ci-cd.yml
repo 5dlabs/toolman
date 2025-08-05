@@ -596,102 +596,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: semantic-release
-  # Create GitHub Release (only for tags)
-  create-release:
-    needs: [version, build-binaries, build-docker]
-    if: needs.version.outputs.is-release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all binary artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts
-
-      - name: Create release notes
-        id: release-notes
-        run: |
-          cat > release-notes.md << 'EOF'
-          ## Toolman ${{ needs.version.outputs.version }}
-
-          A dynamic tool management system for MCP (Model Context Protocol) servers.
-
-          ### 📥 Installation
-
-          #### Quick Install (Recommended)
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
-          ```
-
-          #### Manual Download
-          Download the appropriate binary for your platform:
-
-          | Platform | Architecture | Download |
-          |----------|--------------|----------|
-          | Linux | x64 | [toolman-x86_64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-unknown-linux-gnu.tar.gz) |
-          | Linux | ARM64 | [toolman-aarch64-unknown-linux-gnu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-aarch64-unknown-linux-gnu.tar.gz) |
-          | macOS | Intel | [toolman-x86_64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-x86_64-apple-darwin.tar.gz) |
-          | macOS | Apple Silicon | [toolman-aarch64-apple-darwin.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.version }}/toolman-aarch64-apple-darwin.tar.gz) |
-
-          #### Extract and Install
-          ```bash
-          # Download and extract (replace with your platform)
-          curl -L -o toolman.tar.gz [download-url-from-table-above]
-          tar -xzf toolman.tar.gz
-          chmod +x toolman-client toolman-server
-
-          # Move to PATH (optional)
-          sudo mv toolman-client toolman-server /usr/local/bin/
-          ```
-
-          ### 🚀 Quick Start
-
-          1. **Start the server:**
-             ```bash
-             toolman-server --port 3000 --project-dir /path/to/your/mcp-config
-             ```
-
-          2. **Use the client:**
-             ```bash
-             toolman-client --config /path/to/client-config.json
-             ```
-
-          ### 🐳 Docker Image
-          ```bash
-          docker pull ghcr.io/${{ github.repository_owner }}/toolman:${{ needs.version.outputs.version }}
-          ```
-
-          ### ☸️ Kubernetes Deployment
-          ```bash
-          helm repo add toolman https://${{ github.repository_owner }}.github.io/toolman
-          helm install toolman toolman/toolman --version ${{ needs.version.outputs.version }}
-          ```
-
-          ### 📚 Documentation
-          - [Getting Started Guide](https://github.com/${{ github.repository }}/blob/main/README.md)
-          - [Configuration Examples](https://github.com/${{ github.repository }}/tree/main/examples)
-          - [Deployment Guide](https://github.com/${{ github.repository }}/tree/main/charts/toolman)
-
-          EOF
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: "Toolman ${{ needs.version.outputs.version }}"
-          tag_name: ${{ needs.version.outputs.version }}
-          body_path: release-notes.md
-          draft: false
-          prerelease: false
-          files: |
-            artifacts/*/toolman-*.tar.gz
-          generate_release_notes: true
+  # Note: GitHub releases are now handled by cargo-dist workflow
+  # when semantic-release creates tags
 
   # Deployment summary
   deployment-summary:
-    needs: [version, build-binaries, build-docker, security-scan, test-helm, deploy, create-release]
+    needs: [version, build-binaries, build-docker, security-scan, test-helm, deploy]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -709,7 +619,7 @@ jobs:
           echo "- 🎯 Helm chart tests: ${{ needs.test-helm.result }}"
           echo ""
           echo "## Release:"
-          echo "- 📋 GitHub Release: ${{ needs.create-release.result }}"
+          echo "- 📋 GitHub Release: handled by cargo-dist on tag creation"
           echo ""
           echo "## Deployment:"
           echo "- 🚀 Production deployment: ${{ needs.deploy.result }}"
