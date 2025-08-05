@@ -19,10 +19,9 @@ path = "src/lib.rs"
 name = "toolman-client"
 path = "src/bin/client.rs"
 
-# Server binary excluded from distribution - platform use only
-# [[bin]]
-# name = "toolman-server"
-# path = "src/server/http_server.rs"
+[[bin]]
+name = "toolman-server"
+path = "src/server/http_server.rs"
 
 [dependencies]
 anyhow = "1.0"
