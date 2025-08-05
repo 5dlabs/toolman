@@ -601,7 +601,7 @@ jobs:
 
   # Deployment summary
   deployment-summary:
-    needs: [version, build-binaries, build-docker, security-scan, test-helm, deploy]
+    needs: [version, build-binaries, build-docker, security-scan, semantic-release]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -612,17 +612,17 @@ jobs:
           echo "## Artifacts Built:"
           echo "- ✅ Binary artifacts: ${{ needs.build-binaries.result }}"
           echo "- ✅ Docker image: ${{ needs.build-docker.result }}"
-          echo "- 📦 Helm chart: ${{ needs.test-helm.result }}"
+          echo "- 📦 Helm chart: disabled (handled separately)"
           echo ""
           echo "## Quality Checks:"
           echo "- 📊 Security scan: ${{ needs.security-scan.result }}"
-          echo "- 🎯 Helm chart tests: ${{ needs.test-helm.result }}"
+          echo "- 🎯 Helm chart tests: disabled (handled separately)"
           echo ""
           echo "## Release:"
           echo "- 📋 GitHub Release: handled by cargo-dist on tag creation"
           echo ""
           echo "## Deployment:"
-          echo "- 🚀 Production deployment: ${{ needs.deploy.result }}"
+          echo "- 🚀 Production deployment: disabled (ArgoCD handles deployment)"
           echo ""
           echo "## Container Image:"
           echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
