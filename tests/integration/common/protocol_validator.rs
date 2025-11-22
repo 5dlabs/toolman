@@ -119,8 +119,8 @@ impl ProtocolValidator {
             .client
             .send_request("invalid_method", json!({}))
             .await;
-        if result.is_ok() {
-            if let Some(error) = result.unwrap().error {
+        if let Ok(response) = result {
+            if let Some(error) = response.error {
                 println!(
                     "Correct: Server returned error for invalid method: {}",
                     error
