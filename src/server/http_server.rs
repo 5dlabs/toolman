@@ -2695,7 +2695,11 @@ impl BridgeState {
                                 // Get available tools for original name lookup
                                 let available_tools = self.available_tools.read().await;
 
-                                match parse_tool_name_with_servers(tool_name, &available_servers, &available_tools) {
+                                match parse_tool_name_with_servers(
+                                    tool_name,
+                                    &available_servers,
+                                    &available_tools,
+                                ) {
                                     Ok(parsed_tool) => {
                                         // Drop the available_tools lock early to prevent deadlocks
                                         drop(available_tools);
