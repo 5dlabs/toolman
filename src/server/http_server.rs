@@ -70,6 +70,10 @@ struct Tool {
     #[serde(rename = "inputSchema")]
     input_schema: Value,
     server_name: String,
+    /// The original tool name as reported by the MCP server (may contain hyphens)
+    /// This is used for forwarding tool calls to preserve the exact name the server expects
+    #[serde(skip_serializing)]
+    original_tool_name: String,
 }
 
 // Tool catalog structures for ConfigMap
@@ -122,13 +126,18 @@ enum ToolParseError {
 
 /// Parse a prefixed tool name into server and tool components
 ///
+/// This function handles the Context7 routing bug by looking up the original tool name
+/// from the available_tools HashMap. When Cursor sanitizes tool names (converting hyphens
+/// to underscores), we need to restore the original tool name for forwarding.
+///
 /// Examples:
 /// - "memory_delete_entities" → ParsedTool { server_name: "memory", tool_name: "delete_entities" }
+/// - "context7_resolve_library_id" → ParsedTool { server_name: "context7", tool_name: "resolve-library-id" }
 /// - "filesystem_read_file" → ParsedTool { server_name: "filesystem", tool_name: "read_file" }
-/// - "complex_server_complex_tool_name" → ParsedTool { server_name: "complex_server", tool_name: "complex_tool_name" }
 fn parse_tool_name_with_servers(
     tool_name: &str,
     available_servers: &[String],
+    available_tools: &HashMap<String, Tool>,
 ) -> Result<ParsedTool, ToolParseError> {
     if tool_name.is_empty() {
         return Err(ToolParseError::EmptyToolName);
@@ -155,9 +164,9 @@ fn parse_tool_name_with_servers(
     // Try each underscore position to find a match with known servers
     for &underscore_pos in &underscore_positions {
         let potential_server_underscore = &tool_name[..underscore_pos];
-        let potential_tool = &tool_name[underscore_pos + 1..];
+        let _potential_tool = &tool_name[underscore_pos + 1..];
 
-        if !potential_server_underscore.is_empty() && !potential_tool.is_empty() {
+        if !potential_server_underscore.is_empty() {
             // Check if this matches any of our known servers (in underscore format)
             if underscore_servers
                 .iter()
@@ -169,10 +178,26 @@ fn parse_tool_name_with_servers(
                     .find(|s| s.replace('-', "_") == potential_server_underscore)
                     .unwrap(); // Safe because we just found it above
 
-                return Ok(ParsedTool {
-                    server_name: original_server.clone(),
-                    tool_name: potential_tool.to_string(),
-                });
+                // 🔧 FIX: Look up the original tool name from available_tools HashMap
+                // This is critical for Context7 and any other MCP servers that use hyphens
+                if let Some(tool) = available_tools.get(tool_name) {
+                    // Use the original tool name stored during registration
+                    return Ok(ParsedTool {
+                        server_name: original_server.clone(),
+                        tool_name: tool.original_tool_name.clone(),
+                    });
+                } else {
+                    // Fallback: If tool not found in HashMap, log a warning and use parsed name
+                    // This should not happen in normal operation
+                    eprintln!(
+                        "⚠️ Tool '{}' not found in available_tools HashMap. Using parsed name as fallback.",
+                        tool_name
+                    );
+                    return Ok(ParsedTool {
+                        server_name: original_server.clone(),
+                        tool_name: _potential_tool.to_string(),
+                    });
+                }
             }
         }
     }
@@ -1342,6 +1367,8 @@ impl BridgeState {
                                     .cloned()
                                     .unwrap_or_else(|| json!({})),
                                 server_name: server_name.to_string(),
+                                // Preserve the original tool name for accurate forwarding
+                                original_tool_name: name.to_string(),
                             })
                         } else {
                             None
@@ -1673,6 +1700,8 @@ impl BridgeState {
                                             .cloned()
                                             .unwrap_or(json!({})),
                                         server_name: server_name.to_string(),
+                                        // Preserve the original tool name for accurate forwarding
+                                        original_tool_name: name.to_string(),
                                     })
                                 } else {
                                     None
@@ -2163,6 +2192,8 @@ impl BridgeState {
                                         .cloned()
                                         .unwrap_or(json!({})),
                                     server_name: server_name.to_string(),
+                                    // Preserve the original tool name for accurate forwarding
+                                    original_tool_name: name.to_string(),
                                 })
                             } else {
                                 println!(
@@ -2517,10 +2548,12 @@ async fn discover_tools_via_sse(
                         let input_schema = tool.get("inputSchema").cloned().unwrap_or(json!({}));
 
                         Some(Tool {
-                            name,
+                            name: name.clone(),
                             description,
                             input_schema,
                             server_name: server_name.to_string(),
+                            // Preserve the original tool name for accurate forwarding
+                            original_tool_name: name,
                         })
                     })
                     .collect()
@@ -2659,8 +2692,13 @@ impl BridgeState {
                                     config_manager.get_servers().keys().cloned().collect();
                                 drop(config_manager);
 
-                                match parse_tool_name_with_servers(tool_name, &available_servers) {
+                                // Get available tools for original name lookup
+                                let available_tools = self.available_tools.read().await;
+
+                                match parse_tool_name_with_servers(tool_name, &available_servers, &available_tools) {
                                     Ok(parsed_tool) => {
+                                        // Drop the available_tools lock early to prevent deadlocks
+                                        drop(available_tools);
                                         // Get arguments for the tool call
                                         let mut arguments =
                                             params.get("arguments").cloned().unwrap_or(json!({}));
@@ -2734,6 +2772,8 @@ impl BridgeState {
                                         }
                                     }
                                     Err(e) => {
+                                        // Drop the available_tools lock
+                                        drop(available_tools);
                                         json!({
                                             "content": [{
                                                 "type": "text",
