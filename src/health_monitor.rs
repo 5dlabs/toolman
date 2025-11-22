@@ -396,7 +396,7 @@ impl HealthMonitor {
             server_name.hash(&mut hasher);
             let hash = hasher.finish();
 
-            if hash % 50 == 0 {
+            if hash.is_multiple_of(50) {
                 // 2% failure rate for simulation
                 Err(Box::new(ErrorContext::new(
                     BridgeError::HealthCheckFailed {
