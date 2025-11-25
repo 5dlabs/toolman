@@ -1040,7 +1040,8 @@ impl BridgeState {
                         // Cursor converts hyphens to underscores in tool names for compatibility
                         // We must use the sanitized name as the HashMap key so lookups work
                         let sanitized_tool_name = tool.name.replace('-', "_");
-                        let prefixed_name = format!("{}_{}", normalized_server_name, sanitized_tool_name);
+                        let prefixed_name =
+                            format!("{}_{}", normalized_server_name, sanitized_tool_name);
                         all_tools.insert(prefixed_name, tool);
                     }
                 }
