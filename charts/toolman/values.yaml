@@ -162,15 +162,16 @@ config:
         keys:
           - "BRAVE_API_KEY"
 
-    memory:
-      name: "Memory"
-      description: "Persistent memory and knowledge graph for long-term information retention"
-      transport: "stdio"
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-memory"]
-      workingDirectory: "project_root"
-      env:
-        MEMORY_FILE_PATH: "/home/mcp/memory.json"
+    # NOTE: Old memory server removed - use openmemory instead
+    # memory:
+    #   name: "Memory"
+    #   description: "Persistent memory and knowledge graph for long-term information retention"
+    #   transport: "stdio"
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-memory"]
+    #   workingDirectory: "project_root"
+    #   env:
+    #     MEMORY_FILE_PATH: "/home/mcp/memory.json"
 
     terraform:
       name: "Terraform"
@@ -217,15 +218,10 @@ config:
           - "REDDIT_PASSWORD"
 
 # Local tools configuration (client-side tools available in agent containers)
+# NOTE: filesystem server removed - its inputSchema lacks required "type": "object"
+# which breaks MCP protocol validation in Cursor and other clients
 localTools:
-  servers:
-    filesystem:
-      name: "Filesystem"
-      description: "File system operations for reading, writing, and managing files"
-      transport: "stdio"
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-      workingDirectory: "/tmp"
+  servers: {}
 
 # Persistence for temporary files and caches
 persistence:
