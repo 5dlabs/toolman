@@ -91,6 +91,13 @@ impl McpClient {
     }
 
     /// Check if a tool should be included based on the new client configuration
+    /// 
+    /// For remote tools:
+    /// - If `remoteTools` is empty or missing → include ALL remote tools (no filtering)
+    /// - If `remoteTools` has items → only include those specific tools (whitelist mode)
+    /// 
+    /// For local tools:
+    /// - Always check against explicit tool lists from local server configs
     fn should_include_tool(&self, tool_name: &str, is_local: bool) -> bool {
         if let Some(ref config) = self.client_config {
             if is_local {
@@ -100,8 +107,14 @@ impl McpClient {
                     .values()
                     .any(|server| server.tools.contains(&tool_name.to_string()))
             } else {
-                // Check if tool is in remote tools list
-                config.remote_tools.contains(&tool_name.to_string())
+                // For remote tools: empty list means "include all" (no filtering)
+                // This allows dynamic discovery without explicit whitelisting
+                if config.remote_tools.is_empty() {
+                    true
+                } else {
+                    // Explicit whitelist mode: only include tools in the list
+                    config.remote_tools.contains(&tool_name.to_string())
+                }
             }
         } else {
             // Legacy mode: include all tools
