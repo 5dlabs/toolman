@@ -202,6 +202,13 @@ config:
       url: "http://rustdocs-mcp-rust-docs-mcp-server.mcp.svc.cluster.local:3000/sse"
       workingDirectory: "project_root"
 
+    ai-elements:
+      name: "AI Elements"
+      description: "AI-native UI component library for building chat interfaces, AI applications, and streaming UIs"
+      transport: "http"
+      url: "https://registry.ai-sdk.dev/api/mcp"
+      workingDirectory: "project_root"
+
     reddit:
       name: "Reddit"
       description: "Reddit content fetching and analysis via uvx"
