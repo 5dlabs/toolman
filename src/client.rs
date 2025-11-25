@@ -91,11 +91,11 @@ impl McpClient {
     }
 
     /// Check if a tool should be included based on the new client configuration
-    /// 
+    ///
     /// For remote tools:
     /// - If `remoteTools` is empty or missing → include ALL remote tools (no filtering)
     /// - If `remoteTools` has items → only include those specific tools (whitelist mode)
-    /// 
+    ///
     /// For local tools:
     /// - Always check against explicit tool lists from local server configs
     fn should_include_tool(&self, tool_name: &str, is_local: bool) -> bool {
