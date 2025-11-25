@@ -218,15 +218,10 @@ config:
           - "REDDIT_PASSWORD"
 
 # Local tools configuration (client-side tools available in agent containers)
+# NOTE: filesystem server removed - its inputSchema lacks required "type": "object"
+# which breaks MCP protocol validation in Cursor and other clients
 localTools:
-  servers:
-    filesystem:
-      name: "Filesystem"
-      description: "File system operations for reading, writing, and managing files"
-      transport: "stdio"
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-      workingDirectory: "/tmp"
+  servers: {}
 
 # Persistence for temporary files and caches
 persistence:
