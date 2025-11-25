@@ -162,15 +162,16 @@ config:
         keys:
           - "BRAVE_API_KEY"
 
-    memory:
-      name: "Memory"
-      description: "Persistent memory and knowledge graph for long-term information retention"
-      transport: "stdio"
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-memory"]
-      workingDirectory: "project_root"
-      env:
-        MEMORY_FILE_PATH: "/home/mcp/memory.json"
+    # NOTE: Old memory server removed - use openmemory instead
+    # memory:
+    #   name: "Memory"
+    #   description: "Persistent memory and knowledge graph for long-term information retention"
+    #   transport: "stdio"
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-memory"]
+    #   workingDirectory: "project_root"
+    #   env:
+    #     MEMORY_FILE_PATH: "/home/mcp/memory.json"
 
     terraform:
       name: "Terraform"
