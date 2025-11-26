@@ -42,6 +42,12 @@ permissions:
 # If there's a prerelease-style suffix to the version, then the release(s)
 # will be marked as a prerelease.
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
   pull_request:
   push:
     tags:
@@ -54,15 +60,52 @@ jobs:
     runs-on: "ubuntu-22.04"
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ !github.event.pull_request && github.ref_name || '' }}
-      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
-      publishing: ${{ !github.event.pull_request }}
+      tag: ${{ steps.determine-tag.outputs.tag }}
+      tag-flag: ${{ steps.determine-tag.outputs.tag-flag }}
+      publishing: ${{ steps.determine-tag.outputs.publishing }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Determine tag and publishing mode
+        id: determine-tag
+        shell: bash
+        run: |
+          # Determine the tag based on the event type
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # For manual dispatch, use the input tag
+            TAG="${{ inputs.tag }}"
+            # Validate tag format
+            if ! echo "$TAG" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+'; then
+              echo "Error: Invalid tag format '$TAG'. Expected format: v1.0.0 or 1.0.0"
+              exit 1
+            fi
+            PUBLISHING="true"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # For tag push events, use the ref name
+            TAG="${{ github.ref_name }}"
+            PUBLISHING="true"
+          else
+            # For pull requests, don't publish
+            TAG=""
+            PUBLISHING="false"
+          fi
+          
+          # Set outputs
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG" ]; then
+            echo "tag-flag=--tag=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag-flag=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "publishing=$PUBLISHING" >> "$GITHUB_OUTPUT"
+          
+          echo "Event: ${{ github.event_name }}"
+          echo "Tag: $TAG"
+          echo "Publishing: $PUBLISHING"
 
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
@@ -81,7 +124,11 @@ jobs:
       # but also really annoying to build CI around when it needs secrets to work right.)
       - id: plan
         run: |
-          dist ${{ (!github.event.pull_request && format('host --steps=create --tag={0}', github.ref_name)) || 'plan' }} --output-format=json > plan-dist-manifest.json
+          if [ "${{ steps.determine-tag.outputs.publishing }}" = "true" ]; then
+            dist host --steps=create --tag=${{ steps.determine-tag.outputs.tag }} --output-format=json > plan-dist-manifest.json
+          else
+            dist plan --output-format=json > plan-dist-manifest.json
+          fi
           echo "dist ran successfully"
           cat plan-dist-manifest.json
           echo "manifest=$(jq -c "." plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
