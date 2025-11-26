@@ -42,21 +42,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Log environment variables for debugging workspace detection
     eprintln!("[Client] === Environment Variable Detection ===");
-    eprintln!("[Client] WORKSPACE_FOLDER: {:?}", std::env::var("WORKSPACE_FOLDER").ok());
-    eprintln!("[Client] VSCODE_CWD: {:?}", std::env::var("VSCODE_CWD").ok());
-    eprintln!("[Client] PROJECT_ROOT: {:?}", std::env::var("PROJECT_ROOT").ok());
+    eprintln!(
+        "[Client] WORKSPACE_FOLDER: {:?}",
+        std::env::var("WORKSPACE_FOLDER").ok()
+    );
+    eprintln!(
+        "[Client] VSCODE_CWD: {:?}",
+        std::env::var("VSCODE_CWD").ok()
+    );
+    eprintln!(
+        "[Client] PROJECT_ROOT: {:?}",
+        std::env::var("PROJECT_ROOT").ok()
+    );
     eprintln!("[Client] PWD: {:?}", std::env::var("PWD").ok());
-    eprintln!("[Client] Current directory: {:?}", std::env::current_dir().ok());
-    
+    eprintln!(
+        "[Client] Current directory: {:?}",
+        std::env::current_dir().ok()
+    );
+
     // Show all environment variables that might be IDE-related
     eprintln!("[Client] === IDE-Related Environment Variables ===");
     for (key, value) in std::env::vars() {
-        if key.contains("WORKSPACE") 
-            || key.contains("PROJECT") 
-            || key.contains("VSCODE") 
+        if key.contains("WORKSPACE")
+            || key.contains("PROJECT")
+            || key.contains("VSCODE")
             || key.contains("CURSOR")
             || key.contains("IDE")
-            || key.contains("JETBRAINS") {
+            || key.contains("JETBRAINS")
+        {
             eprintln!("[Client] {key}: {value}");
         }
     }
