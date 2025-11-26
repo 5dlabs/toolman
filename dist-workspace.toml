@@ -4,7 +4,7 @@ members = ["cargo:"]
 # Config for 'dist'
 [dist]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.29.0"
+cargo-dist-version = "0.30.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -17,6 +17,8 @@ hosting = "github"
 install-updater = false
 # Allow manual customizations to release.yml
 allow-dirty = ["ci"]
+# Install to user-local bin directory (standard macOS/Linux user path, no sudo required)
+install-path = "~/.local/bin"
 
 # The profile that 'dist' will build with
 [profile.dist]
