@@ -290,7 +290,10 @@ impl McpClient {
             .into_iter()
             .filter(|tool| {
                 if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
-                    let enabled = self.should_include_tool(name, false);
+                    // Sanitize the tool name (replace hyphens with underscores) before checking
+                    // This ensures we match the config which uses sanitized names
+                    let sanitized_name = name.replace('-', "_");
+                    let enabled = self.should_include_tool(&sanitized_name, false);
                     if !enabled {
                         eprintln!("[Bridge] Filtering out remote tool: {name}");
                     }

@@ -981,9 +981,10 @@ impl BridgeState {
                     }
 
                     // Discover tools with timeout
+                    // Increased to 180s to allow for first-time uvx installations from git repos
                     println!("🔍 [{}] Starting tool discovery...", server_name);
                     let discovery_start = std::time::Instant::now();
-                    let discovery_timeout = tokio::time::Duration::from_secs(45);
+                    let discovery_timeout = tokio::time::Duration::from_secs(180);
 
                     match tokio::time::timeout(
                         discovery_timeout,
@@ -1929,7 +1930,9 @@ impl BridgeState {
         );
 
         // Use configurable timeout or default
-        let timeout_secs = 30; // Default timeout for all servers
+        // Increased to 120s to allow for first-time uvx installations from git repos
+        // which need to clone + pip install before the MCP server can respond
+        let timeout_secs = 120; // Default timeout for all servers
         println!(
             "🔍 [{}] Using timeout of {} seconds for initialization",
             server_name, timeout_secs
