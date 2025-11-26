@@ -78,9 +78,9 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # For manual dispatch, use the input tag
             TAG="${{ inputs.tag }}"
-            # Validate tag format
-            if ! echo "$TAG" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+'; then
-              echo "Error: Invalid tag format '$TAG'. Expected format: v1.0.0 or 1.0.0"
+            # Validate tag format (with strict end-of-line anchor to prevent injection)
+            if ! echo "$TAG" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+              echo "Error: Invalid tag format '$TAG'. Expected format: v1.0.0, 1.0.0, v1.0.0-alpha, or v1.0.0+build"
               exit 1
             fi
             PUBLISHING="true"
@@ -111,7 +111,7 @@ jobs:
         # we specify bash to get pipefail; it guards against the `curl` command
         # failing. otherwise `sh` won't catch that `curl` returned non-0
         shell: bash
-        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.29.0/cargo-dist-installer.sh | sh"
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.30.0/cargo-dist-installer.sh | sh"
       - name: Cache dist
         uses: actions/upload-artifact@v4
         with:
